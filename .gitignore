@@ -1,0 +1,7 @@
+node_modules/
+apps/desktop/main/node_modules/
+dist/
+*.o
+*.out
+*.exe
+.DS_Store

@@ -1,0 +1,17 @@
+{
+  "name": "mclist-desktop",
+  "version": "1.0.0",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron ."
+  },
+
+  "author": "Eric Kamakawa",
+  "description": "",
+  "devDependencies": {
+    "electron": "^30.0.0"
+  }
+}
+
+

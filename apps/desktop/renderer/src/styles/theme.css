@@ -1,0 +1,32 @@
+:root{
+  --red: #E63946;
+
+  /* mais neutro, menos “esverdeado” que #F1FAEE */
+  --bg: #fafafa;
+
+  --muted: rgba(29,29,29,0.55);
+  --black: #1D1D1D;
+
+  --panel: #ffffff;
+  --border: rgba(29, 29, 29, 0.10);
+
+  /* sombra mais “premium” */
+  --shadow: 0 30px 80px rgba(29, 29, 29, 0.10);
+
+  --radius: 18px;
+  --gap: 14px;
+  --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  --glass-blur: 10px;
+}
+
+html[data-theme="dark"]{
+  --bg: #0f0f10;
+  --black: #F1FAEE;
+  --muted: rgba(241,250,238,0.65);
+
+  --panel: #17181a;
+  --border: rgba(241, 250, 238, 0.10);
+  --shadow: 0 30px 90px rgba(0,0,0,0.55);
+
+  --glass-blur: 12px;
+}
