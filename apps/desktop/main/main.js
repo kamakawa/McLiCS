@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { spawn, spawnSync } = require("child_process");
@@ -59,7 +59,7 @@ function writeRunLog(logPath, text) {
   fs.appendFileSync(logPath, text, "utf8");
 }
 
-/* ================= PARAM SANITIZER (THE FIX) ================= */
+/* ================= PARAM SANITIZER ================= */
 
 function sanitizeParamText(paramText) {
   const oneWordKeys = new Set([
@@ -77,7 +77,7 @@ function sanitizeParamText(paramText) {
   const out = [];
 
   for (const line of lines) {
-    const trimmedRight = String(line).replace(/\s+$/g, ""); // remove trailing spaces
+    const trimmedRight = String(line).replace(/\s+$/g, "");
     const trimmed = trimmedRight.trim();
 
     if (!trimmed) {
@@ -90,10 +90,8 @@ function sanitizeParamText(paramText) {
       continue;
     }
 
-    // key + value
     const m = trimmedRight.match(/^(\S+)\s+(.*)$/);
     if (!m) {
-      // weird line; keep as single token
       out.push(trimmed);
       continue;
     }
@@ -102,15 +100,10 @@ function sanitizeParamText(paramText) {
     let rest = (m[2] || "").replace(/\r/g, "").replace(/\n+/g, " ").trim();
 
     if (oneWordKeys.has(key)) {
-      // keep only first token to avoid "thermal<terminal prompt>"
       rest = rest.split(/\s+/)[0] || "";
     }
 
-    if (!rest) {
-      // if rest got empty by sanitizing, skip line
-      continue;
-    }
-
+    if (!rest) continue;
     out.push(`${key}  ${rest}`);
   }
 
@@ -144,11 +137,9 @@ function addRecent(filePath) {
   saveRecents(next);
 }
 
-ipcMain.handle("get-recents", async () => {
-  return loadRecents();
-});
+ipcMain.handle("get-recents", async () => loadRecents());
 
-/* ================= FILE PICKERS (optional) ================= */
+/* ================= FILE PICKERS ================= */
 
 ipcMain.handle("open-param-file", async () => {
   const res = await dialog.showOpenDialog(mainWindow, {
@@ -181,15 +172,46 @@ ipcMain.handle("export-param-file", async (_e, { paramText }) => {
   return { canceled: false, filePath: res.filePath };
 });
 
+/* ================= RESULTS: list/read/open files ================= */
+
+function safeInsideWorkdir(workdir, filename) {
+  const full = path.resolve(workdir, filename);
+  const root = path.resolve(workdir);
+  if (!full.startsWith(root + path.sep)) throw new Error("Invalid path.");
+  return full;
+}
+
+ipcMain.handle("list-run-files", async (_e, { workdir }) => {
+  if (!workdir) throw new Error("Missing workdir.");
+  const entries = fs.readdirSync(workdir, { withFileTypes: true });
+  const files = entries
+    .filter((e) => e.isFile())
+    .map((e) => e.name)
+    .sort((a, b) => a.localeCompare(b));
+  return { files };
+});
+
+ipcMain.handle("read-run-file", async (_e, { workdir, filename, maxBytes = 2_000_000 }) => {
+  if (!workdir || !filename) throw new Error("Missing args.");
+  const full = safeInsideWorkdir(workdir, filename);
+  const buf = fs.readFileSync(full);
+  const sliced = buf.length > maxBytes ? buf.slice(0, maxBytes) : buf;
+  // tenta utf8; se for binário, pode virar “lixo” — o renderer vai tratar
+  return { text: sliced.toString("utf8"), truncated: buf.length > maxBytes };
+});
+
+ipcMain.handle("open-run-folder", async (_e, { workdir }) => {
+  if (!workdir) throw new Error("Missing workdir.");
+  await shell.openPath(workdir);
+  return { ok: true };
+});
+
 /* ================= RUN ================= */
 
 ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
-  if (running?.child) {
-    throw new Error("A simulation is already running.");
-  }
+  if (running?.child) throw new Error("A simulation is already running.");
 
   const id = `${Date.now()}`;
-
   ensureDir(runsBaseDir());
   const workdir = path.join(runsBaseDir(), `run_${id}`);
   ensureDir(workdir);
@@ -197,26 +219,17 @@ ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
   const logPath = path.join(workdir, "run.log");
   const backend = backendDir();
 
-  // sanitize param and write
   const cleanParamText = sanitizeParamText(paramText);
   const paramPath = path.join(workdir, "param.txt");
   fs.writeFileSync(paramPath, cleanParamText, "utf8");
 
-  // log header
   writeRunLog(
     logPath,
     `=== MClist run ${id} ===\nmode=${mode}\nbackend=${backend}\nparam=${paramPath}\nworkdir=${workdir}\n\n`
   );
 
-  console.log("===== COMPILING BACKEND =====");
-  console.log("Mode:", mode);
-  console.log("Backend:", backend);
-
   const makeArgs = mode === "cpu" ? ["CPU"] : [];
-  const compile = spawnSync("make", makeArgs, {
-    cwd: backend,
-    encoding: "utf8",
-  });
+  const compile = spawnSync("make", makeArgs, { cwd: backend, encoding: "utf8" });
 
   if (compile.stdout) {
     send("sim-log", { id, type: "stdout", data: compile.stdout });
@@ -229,25 +242,20 @@ ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
 
   if (compile.status !== 0) {
     writeRunLog(logPath, "\n=== compilation FAILED ===\n");
-    throw new Error("Compilation failed. Check logs in Running screen / run.log.");
+    throw new Error("Compilation failed. Check logs / run.log.");
   }
 
   writeRunLog(logPath, "\n=== compilation OK ===\n\n");
 
   const exeName = mode === "cpu" ? "mc_sim_cpu" : "mc_sim";
   const exePath = path.join(backend, exeName);
-
-  if (!fs.existsSync(exePath)) {
-    writeRunLog(logPath, `Binary not found after compilation: ${exePath}\n`);
-    throw new Error(`Binary not found after compilation: ${exePath}`);
-  }
+  if (!fs.existsSync(exePath)) throw new Error(`Binary not found: ${exePath}`);
 
   writeRunLog(
     logPath,
     `=== starting simulation ===\nexe=${exePath}\nparam=${paramPath}\ncwd=${workdir}\n\n`
   );
 
-  // spawn simulation
   const child = spawn(exePath, [paramPath], { cwd: workdir });
   running = { id, child };
 
@@ -271,16 +279,7 @@ ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
 
   child.on("error", (err) => {
     writeRunLog(logPath, `\n\n=== spawn error ===\n${err?.message || String(err)}\n`);
-    send("sim-done", {
-      id,
-      code: -1,
-      error: err?.message || String(err),
-      workdir,
-      paramPath,
-      exePath,
-      mode,
-      logPath,
-    });
+    send("sim-done", { id, code: -1, error: err?.message || String(err), workdir, paramPath, exePath, mode, logPath });
     running = null;
   });
 
@@ -291,11 +290,7 @@ ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
 
 ipcMain.handle("cancel-sim", async () => {
   if (!running?.child) return { ok: false };
-
-  try {
-    running.child.kill("SIGTERM");
-  } catch {}
-
+  try { running.child.kill("SIGTERM"); } catch {}
   running = null;
   return { ok: true };
 });

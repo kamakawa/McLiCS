@@ -10,6 +10,12 @@ contextBridge.exposeInMainWorld("mclist", {
   runSim: (payload) => ipcRenderer.invoke("run-sim", payload),
   cancelSim: () => ipcRenderer.invoke("cancel-sim"),
 
+  // results helpers
+  listRunFiles: (workdir) => ipcRenderer.invoke("list-run-files", { workdir }),
+  readRunFile: (workdir, filename, maxBytes) =>
+    ipcRenderer.invoke("read-run-file", { workdir, filename, maxBytes }),
+  openRunFolder: (workdir) => ipcRenderer.invoke("open-run-folder", { workdir }),
+
   // events (return unsubscribe to avoid leaks)
   onSimLog: (cb) => {
     const handler = (_e, msg) => cb(msg);
