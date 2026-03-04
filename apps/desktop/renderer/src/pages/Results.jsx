@@ -1,7 +1,55 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import logoPng from "../assets/logo.png";
 
 const api = window.mclist;
+
+/* ================== Helpers (PDF export) ================== */
+
+async function assetToDataUrl(assetUrl) {
+  const res = await fetch(assetUrl);
+  const blob = await res.blob();
+  return await new Promise((resolve) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ""));
+    r.readAsDataURL(blob);
+  });
+}
+
+// Captura SVG/Canvas do gráfico (da preview box) e transforma em PNG (dataURL)
+async function capturePlotPngFromDom(domEl) {
+  const svg = domEl?.querySelector("svg");
+  if (svg) {
+    const xml = new XMLSerializer().serializeToString(svg);
+    const svgBlob = new Blob([xml], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+
+    const img = new Image();
+    img.src = url;
+    await new Promise((r) => (img.onload = r));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 1400;
+    canvas.height = Math.round((img.height / img.width) * canvas.width) || 800;
+    const ctx = canvas.getContext("2d");
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    URL.revokeObjectURL(url);
+    return canvas.toDataURL("image/png");
+  }
+
+  const canv = domEl?.querySelector("canvas");
+  if (canv && typeof canv.toDataURL === "function") {
+    return canv.toDataURL("image/png");
+  }
+
+  return "";
+}
+
+/* ================== Page ================== */
 
 export default function Results() {
   const nav = useNavigate();
@@ -17,11 +65,18 @@ export default function Results() {
   const [fileText, setFileText] = useState("");
   const [truncated, setTruncated] = useState(false);
 
+  // Param text (para embutir no PDF)
+  const [paramText, setParamText] = useState("");
+
+  // Notes persistidas por run
   const notesKey = useMemo(
     () => `mclist_notes_${id || workdir || "unknown"}`,
     [id, workdir]
   );
   const [notes, setNotes] = useState(() => localStorage.getItem(notesKey) || "");
+
+  // ref do preview do report (pra capturar PNG do gráfico)
+  const plotRef = useRef(null);
 
   // load file list
   useEffect(() => {
@@ -32,6 +87,7 @@ export default function Results() {
         const list = r?.files || [];
         setFiles(list);
 
+        // pré-seleciona po.dat se existir
         const candidate =
           list.find((f) => f.toLowerCase() === "po.dat") ||
           list.find((f) => f.toLowerCase().endsWith("/po.dat")) ||
@@ -63,23 +119,35 @@ export default function Results() {
     })();
   }, [workdir, selected]);
 
+  // load param.txt for PDF
+  useEffect(() => {
+    if (!api || !workdir) return;
+    (async () => {
+      try {
+        const r = await api.readRunFile(workdir, "param.txt", 2_000_000);
+        setParamText(r?.text || "");
+      } catch (e) {
+        console.error(e);
+        setParamText("");
+      }
+    })();
+  }, [workdir]);
+
   // persist notes
   useEffect(() => {
     localStorage.setItem(notesKey, notes);
   }, [notesKey, notes]);
 
-  // Parse table if possible (even for .log we may fail -> returns null)
+  // Parse table if possible
   const table = useMemo(() => {
     const t = parseTable(fileText);
     if (!t) return null;
-    // only treat as table if at least 2 columns and >=2 rows
     if (t.cols < 2 || t.rows.length < 2) return null;
     return t;
   }, [fileText]);
 
   const curves = useMemo(() => {
     if (!table) return [];
-    // x = col0, y = col1..n
     const xs = table.rows.map((r) => r[0]);
     const out = [];
     for (let j = 1; j < table.cols; j++) {
@@ -91,6 +159,49 @@ export default function Results() {
     }
     return out;
   }, [table]);
+
+  const exportPDF = async () => {
+    try {
+      if (!api) {
+        alert("Export works only inside Electron.");
+        return;
+      }
+
+      // logo
+      const logoDataUrl = await assetToDataUrl(logoPng);
+
+      // plot screenshot (do preview box)
+      const plotPng = await capturePlotPngFromDom(plotRef.current);
+      const plots = [];
+      if (plotPng) plots.push({ title: selected || "Plot", dataUrl: plotPng });
+
+      const meta = {
+        runId: id,
+        mode,
+        code,
+        workdir,
+        paramPath,
+        exePath,
+        logPath,
+        selectedFile: selected,
+      };
+
+      const res = await api.exportReportPDF({
+        meta,
+        logoDataUrl,
+        paramText: paramText || "",
+        notes: notes || "",
+        plots,
+        files: files || [],
+      });
+
+      if (res?.canceled) return;
+      alert(`Saved PDF:\n${res.filePath}`);
+    } catch (e) {
+      console.error(e);
+      alert(`Export report error:\n${String(e)}`);
+    }
+  };
 
   return (
     <div style={s.page}>
@@ -142,7 +253,11 @@ export default function Results() {
         <div style={s.tabs}>
           <Tab label="Plots" active={tab === "plots"} onClick={() => setTab("plots")} />
           <Tab label="Files" active={tab === "files"} onClick={() => setTab("files")} />
-          <Tab label="Notes & Report" active={tab === "notes"} onClick={() => setTab("notes")} />
+          <Tab
+            label="Notes & Report"
+            active={tab === "notes"}
+            onClick={() => setTab("notes")}
+          />
         </div>
       </div>
 
@@ -184,9 +299,7 @@ export default function Results() {
 
           <div style={s.panel}>
             <div style={s.panelTitle}>Plot</div>
-            <div style={s.panelSub}>
-              Auto-plot: X = column 0, Y = columns 1..N.
-            </div>
+            <div style={s.panelSub}>Auto-plot: X = column 0, Y = columns 1..N.</div>
 
             <div style={s.chartBox}>
               {table && isPoDat(selected, table) ? (
@@ -268,32 +381,56 @@ export default function Results() {
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Describe what you observed, hypotheses, settings, etc."
             />
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
+              <button
+                className="ui-hover"
+                style={s.btnGhost}
+                onClick={() => setNotes("")}
+                title="Clear notes (only this run)"
+              >
+                Clear
+              </button>
+
+              <button
+                className="ui-hover"
+                style={s.btnPrimary}
+                onClick={exportPDF}
+                disabled={!api}
+                title="Generate a PDF report with logo + params + plot + notes"
+              >
+                Generate PDF
+              </button>
+            </div>
           </div>
 
           <div style={s.panel}>
-            <div style={s.panelTitle}>Report</div>
+            <div style={s.panelTitle}>Report preview</div>
             <div style={s.panelSub}>
-              Next step: generate a PDF report with your logo + params + plots + notes.
+              This preview image will be embedded in the PDF report.
             </div>
 
-            <div style={s.reportCard}>
-              <div style={s.reportTitle}>Coming next</div>
-              <div style={s.reportText}>
-                • Embed your logo<br />
-                • Parameters summary<br />
-                • Selected plots (export to PNG/SVG)<br />
-                • Notes section<br />
-                • “Open report” / “Save as…” button
+            <div ref={plotRef} style={s.reportPreviewBox}>
+              {table && isPoDat(selected, table) ? (
+                <PoDatChart table={table} />
+              ) : curves?.length ? (
+                <LineChart curves={curves} />
+              ) : (
+                <div style={s.muted2}>No plot available to preview.</div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <div style={s.muted2}>
+                Tip: select <b>po.dat</b> in Files/Plots before exporting to capture the correct
+                chart.
               </div>
-              <button style={s.btnPrimary} disabled title="We’ll enable next step">
-                Generate PDF (soon)
-              </button>
             </div>
           </div>
         </div>
       ) : null}
 
-      {/* Hover CSS (inline, so you don’t have to hunt CSS files) */}
+      {/* Hover CSS (inline, pra não depender de achar CSS em outro arquivo) */}
       <style>{`
         .ui-hover:hover{
           transform: translateY(-1px);
@@ -326,6 +463,8 @@ function Tab({ label, active, onClick }) {
     </button>
   );
 }
+
+/* ================== Table ================== */
 
 function DataTable({ table, maxRows = 200 }) {
   const headers =
@@ -521,7 +660,6 @@ function formatCell(v) {
   if (!Number.isFinite(v)) return "";
   const a = Math.abs(v);
   if (a >= 1000 || (a > 0 && a < 0.001)) return v.toExponential(3);
-  // keep compact but readable
   return v.toFixed(6).replace(/0+$/g, "").replace(/\.$/g, "");
 }
 
@@ -540,11 +678,7 @@ function tagFor(name) {
 }
 
 /* ================== parsing ================== */
-/**
- * parseTable:
- * - If first non-empty non-comment line looks like a header (letters, no numbers), use it as headers.
- * - Then parse subsequent numeric rows (space/tab or comma separated).
- */
+
 function normName(s) {
   return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -554,23 +688,18 @@ function isPoDat(selected, table) {
   if (!selected.toLowerCase().includes("po.dat")) return false;
 
   const hs = (table.headers || []).map(normName);
-  // aceita varS/varSE etc com var + s / e
   const hasT = hs.includes("t");
   const hasS = hs.includes("s");
   const hasE = hs.includes("e");
   const hasVarS = hs.includes("vars") || hs.includes("varse") || hs.includes("varsigma");
   const hasVarE = hs.includes("vare") || hs.includes("varee");
 
-  // também aceita “colunas sem header”: 5 colunas
   const fallback5 = !table.headers && table.cols >= 5;
-
   return (hasT && hasS && hasE && (hasVarS || hasVarE)) || fallback5;
 }
 
 function pickPoColumns(table) {
-  // retorna índices {t, s, varS, e, varE}
   if (!table?.rows?.length) return null;
-
   const hs = (table.headers || []).map(normName);
 
   const idx = (nameList, fallback) => {
@@ -581,7 +710,6 @@ function pickPoColumns(table) {
     return fallback;
   };
 
-  // se sem header, assume padrão: T S varS E varE
   const t = idx(["t"], 0);
   const s = idx(["s"], 1);
   const varS = idx(["vars", "varse"], 2);
@@ -597,19 +725,16 @@ function parseTable(text) {
   let headers = null;
   let startIdx = 0;
 
-  // acha primeira linha útil; aceita header em comentário também
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i].trim();
     if (!raw) continue;
 
     const line = raw.startsWith("#") ? raw.slice(1).trim() : raw;
-
     if (!line) continue;
 
     const hasLetter = /[A-Za-z]/.test(line);
     const hasDigit = /[0-9]/.test(line);
 
-    // Ex: "T S varS E varE" (igual no analyze.py)
     if (hasLetter && !hasDigit) {
       headers = line.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
       startIdx = i + 1;
@@ -623,7 +748,7 @@ function parseTable(text) {
   for (let i = startIdx; i < lines.length; i++) {
     const raw = lines[i].trim();
     if (!raw) continue;
-    if (raw.startsWith("[") && raw.endsWith("]")) continue; // metadados
+    if (raw.startsWith("[") && raw.endsWith("]")) continue;
     if (raw.startsWith("#")) continue;
 
     const parts = raw.includes(",")
@@ -633,7 +758,6 @@ function parseTable(text) {
     const nums = parts.map((p) => Number(p));
     const finiteCount = nums.filter((v) => Number.isFinite(v)).length;
 
-    // po.dat tem 5 colunas; mas aceitamos >=2 para não quebrar outros
     if (finiteCount >= 2) {
       cols = Math.max(cols, nums.length);
       rows.push(nums.map((v) => (Number.isFinite(v) ? v : NaN)));
@@ -642,14 +766,12 @@ function parseTable(text) {
 
   if (!rows.length || cols < 2) return null;
 
-  // normaliza linhas "ragged"
   const norm = rows.map((r) => {
     const out = r.slice();
     while (out.length < cols) out.push(NaN);
     return out;
   });
 
-  // normaliza headers
   if (headers) {
     if (headers.length < cols) {
       headers = headers.concat(
@@ -663,7 +785,7 @@ function parseTable(text) {
   return { headers, rows: norm, cols };
 }
 
-/* ================== Simple SVG Chart (no deps) ================== */
+/* ================== Charts (SVG) ================== */
 
 function LineChart({ curves }) {
   const W = 980;
@@ -765,13 +887,10 @@ function PoDatChart({ table }) {
       E: r[cols.e],
       varE: r[cols.varE],
     }))
-    .filter((p) =>
-      [p.T, p.S, p.E].every((v) => Number.isFinite(v))
-    );
+    .filter((p) => [p.T, p.S, p.E].every((v) => Number.isFinite(v)));
 
   if (!rows.length) return <div style={s.chartEmpty}>Couldn’t parse po.dat columns.</div>;
 
-  // ordenar por T
   rows.sort((a, b) => a.T - b.T);
 
   const seriesS = rows.map((p) => ({
@@ -797,21 +916,8 @@ function PoDatChart({ table }) {
         </div>
       </div>
 
-      <BandChart
-        title="Order parameter S vs Temperature"
-        xLabel="T"
-        yLabel="S"
-        series={seriesS}
-        accent="var(--red)"
-      />
-
-      <BandChart
-        title="Energy E vs Temperature"
-        xLabel="T"
-        yLabel="E"
-        series={seriesE}
-        accent="rgba(29,29,29,0.75)"
-      />
+      <BandChart title="Order parameter S vs Temperature" xLabel="T" yLabel="S" series={seriesS} accent="var(--red)" />
+      <BandChart title="Energy E vs Temperature" xLabel="T" yLabel="E" series={seriesE} accent="rgba(29,29,29,0.75)" />
     </div>
   );
 }
@@ -845,7 +951,6 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
     .map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`)
     .join(" ");
 
-  // banda: sobe (hi) e volta (lo) invertido
   const bandPtsHi = series.filter((p) => Number.isFinite(p.hi)).map((p) => [sx(p.x), sy(p.hi)]);
   const bandPtsLo = series.filter((p) => Number.isFinite(p.lo)).map((p) => [sx(p.x), sy(p.lo)]).reverse();
 
@@ -885,7 +990,6 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
         <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="rgba(0,0,0,0.25)" />
         <line x1={padL} y1={padT} x2={padL} y2={H - padB} stroke="rgba(0,0,0,0.25)" />
 
-        {/* labels */}
         <text x={padL} y={18} fontSize="12" fill="rgba(29,29,29,0.70)" fontWeight="800">
           {yLabel}
         </text>
@@ -893,12 +997,8 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
           {xLabel}
         </text>
 
-        {/* band */}
-        {bandD ? (
-          <path d={bandD} fill={accent} opacity="0.14" stroke="none" />
-        ) : null}
+        {bandD ? <path d={bandD} fill={accent} opacity="0.14" stroke="none" /> : null}
 
-        {/* line */}
         <path
           d={lineD}
           fill="none"
@@ -946,6 +1046,17 @@ const s = {
   btn: {
     border: "1px solid var(--border)",
     background: "rgba(245,247,248,0.85)",
+    color: "var(--black)",
+    borderRadius: 14,
+    padding: "10px 12px",
+    cursor: "pointer",
+    fontWeight: 900,
+    transition: "transform 140ms ease, box-shadow 140ms ease",
+  },
+
+  btnGhost: {
+    border: "1px solid var(--border)",
+    background: "rgba(245,247,248,0.70)",
     color: "var(--black)",
     borderRadius: 14,
     padding: "10px 12px",
@@ -1136,191 +1247,159 @@ const s = {
     lineHeight: 1.5,
   },
 
-  reportCard: {
+  reportPreviewBox: {
+    marginTop: 10,
     border: "1px solid rgba(29,29,29,0.10)",
-    background: "rgba(245,247,248,0.60)",
-    borderRadius: 16,
-    padding: 14,
-    display: "grid",
-    gap: 10,
+    borderRadius: 14,
+    padding: 10,
+    background: "rgba(255,255,255,0.70)",
   },
-  reportTitle: { fontWeight: 950, letterSpacing: -0.2 },
-  reportText: { color: "var(--muted)", fontWeight: 800, lineHeight: 1.55 },
+
+  muted2: { color: "var(--muted)", fontWeight: 800, fontSize: 12 },
 
   /* TABLE */
-  tableWrap: {
+  tableShell: {
     border: "1px solid rgba(29,29,29,0.10)",
     background: "rgba(245,247,248,0.55)",
     borderRadius: 16,
     overflow: "hidden",
   },
-  table: {
+
+  tableToolbar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    padding: 12,
+    borderBottom: "1px solid rgba(29,29,29,0.08)",
+    background: "rgba(255,255,255,0.75)",
+    backdropFilter: "blur(6px)",
+  },
+
+  tableToolbarLeft: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
+  tableToolbarRight: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
+
+  tablePill: {
+    border: "1px solid rgba(29,29,29,0.10)",
+    background: "rgba(255,255,255,0.70)",
+    borderRadius: 999,
+    padding: "6px 10px",
+    fontWeight: 850,
+    color: "var(--black)",
+  },
+
+  tableSearch: {
+    border: "1px solid rgba(29,29,29,0.12)",
+    background: "rgba(255,255,255,0.75)",
+    borderRadius: 12,
+    padding: "8px 10px",
+    outline: "none",
+    fontWeight: 800,
+    minWidth: 220,
+    color: "var(--black)",
+  },
+
+  tableSelect: {
+    border: "1px solid rgba(29,29,29,0.12)",
+    background: "rgba(255,255,255,0.75)",
+    borderRadius: 12,
+    padding: "8px 10px",
+    outline: "none",
+    fontWeight: 800,
+    color: "var(--black)",
+    cursor: "pointer",
+  },
+
+  tableWrap2: {
+    maxHeight: "60vh",
+    overflow: "auto",
+  },
+
+  table2: {
     width: "100%",
     borderCollapse: "separate",
     borderSpacing: 0,
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
     fontSize: 12,
   },
-  th: {
+
+  th2: {
     position: "sticky",
     top: 0,
-    zIndex: 1,
+    zIndex: 2,
     background: "rgba(255,255,255,0.92)",
     backdropFilter: "blur(6px)",
     borderBottom: "1px solid rgba(29,29,29,0.12)",
     padding: "10px 10px",
     textAlign: "left",
-    fontWeight: 900,
+    fontWeight: 950,
+    cursor: "pointer",
+    userSelect: "none",
+    whiteSpace: "nowrap",
   },
-  td: {
+
+  thActive: {
+    color: "var(--red)",
+    borderBottom: "2px solid rgba(230,57,70,0.55)",
+  },
+
+  td2: {
     padding: "8px 10px",
     borderBottom: "1px solid rgba(29,29,29,0.06)",
     whiteSpace: "nowrap",
   },
-  trEven: { background: "rgba(255,255,255,0.55)" },
-  trOdd: { background: "rgba(245,247,248,0.65)" },
-  tableHint: {
-    padding: "10px 12px",
-    fontWeight: 800,
-    color: "var(--muted)",
-    borderTop: "1px solid rgba(29,29,29,0.08)",
+
+  thStickyLeft: {
+    left: 0,
+    zIndex: 3,
+    boxShadow: "6px 0 18px rgba(29,29,29,0.06)",
   },
 
-  // theme helpers
-  ok: "#1ea046",
-  bad: "#E63946",
+  tdStickyLeft: {
+    position: "sticky",
+    left: 0,
+    zIndex: 1,
+    background: "inherit",
+    boxShadow: "6px 0 18px rgba(29,29,29,0.06)",
+    fontWeight: 900,
+  },
 
-  tableShell: {
-  border: "1px solid rgba(29,29,29,0.10)",
-  background: "rgba(245,247,248,0.55)",
-  borderRadius: 16,
-  overflow: "hidden",
-},
+  trEven2: { background: "rgba(255,255,255,0.55)" },
+  trOdd2: { background: "rgba(245,247,248,0.65)" },
 
-tableToolbar: {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  padding: 12,
-  borderBottom: "1px solid rgba(29,29,29,0.08)",
-  background: "rgba(255,255,255,0.75)",
-  backdropFilter: "blur(6px)",
-},
+  tableFooter: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    padding: 12,
+    borderTop: "1px solid rgba(29,29,29,0.08)",
+    background: "rgba(255,255,255,0.70)",
+    backdropFilter: "blur(6px)",
+  },
 
-tableToolbarLeft: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
-tableToolbarRight: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
+  smallBtn: {
+    border: "1px solid rgba(29,29,29,0.12)",
+    background: "rgba(255,255,255,0.70)",
+    borderRadius: 12,
+    padding: "8px 10px",
+    cursor: "pointer",
+    fontWeight: 850,
+    fontSize: 12,
+    transition: "transform 140ms ease, box-shadow 140ms ease",
+  },
 
-tablePill: {
-  border: "1px solid rgba(29,29,29,0.10)",
-  background: "rgba(255,255,255,0.70)",
-  borderRadius: 999,
-  padding: "6px 10px",
-  fontWeight: 850,
-  color: "var(--black)",
-},
+  poTitleRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-end" },
+  poTitle: { fontWeight: 950, letterSpacing: -0.2 },
+  poSub: { fontSize: 12, color: "var(--muted)", fontWeight: 750, marginTop: 2 },
 
-tableSearch: {
-  border: "1px solid rgba(29,29,29,0.12)",
-  background: "rgba(255,255,255,0.75)",
-  borderRadius: 12,
-  padding: "8px 10px",
-  outline: "none",
-  fontWeight: 800,
-  minWidth: 220,
-  color: "var(--black)",
-},
-
-tableSelect: {
-  border: "1px solid rgba(29,29,29,0.12)",
-  background: "rgba(255,255,255,0.75)",
-  borderRadius: 12,
-  padding: "8px 10px",
-  outline: "none",
-  fontWeight: 800,
-  color: "var(--black)",
-  cursor: "pointer",
-},
-
-tableWrap2: {
-  maxHeight: "60vh",
-  overflow: "auto",
-},
-
-table2: {
-  width: "100%",
-  borderCollapse: "separate",
-  borderSpacing: 0,
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  fontSize: 12,
-},
-
-th2: {
-  position: "sticky",
-  top: 0,
-  zIndex: 2,
-  background: "rgba(255,255,255,0.92)",
-  backdropFilter: "blur(6px)",
-  borderBottom: "1px solid rgba(29,29,29,0.12)",
-  padding: "10px 10px",
-  textAlign: "left",
-  fontWeight: 950,
-  cursor: "pointer",
-  userSelect: "none",
-  whiteSpace: "nowrap",
-},
-
-thActive: {
-  color: "var(--red)",
-  borderBottom: "2px solid rgba(230,57,70,0.55)",
-},
-
-td2: {
-  padding: "8px 10px",
-  borderBottom: "1px solid rgba(29,29,29,0.06)",
-  whiteSpace: "nowrap",
-},
-
-thStickyLeft: {
-  left: 0,
-  zIndex: 3,
-  boxShadow: "6px 0 18px rgba(29,29,29,0.06)",
-},
-
-tdStickyLeft: {
-  position: "sticky",
-  left: 0,
-  zIndex: 1,
-  background: "inherit",
-  boxShadow: "6px 0 18px rgba(29,29,29,0.06)",
-  fontWeight: 900,
-},
-
-trEven2: { background: "rgba(255,255,255,0.55)" },
-trOdd2: { background: "rgba(245,247,248,0.65)" },
-
-tableFooter: {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 10,
-  padding: 12,
-  borderTop: "1px solid rgba(29,29,29,0.08)",
-  background: "rgba(255,255,255,0.70)",
-  backdropFilter: "blur(6px)",
-},
-
-poTitleRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-end" },
-poTitle: { fontWeight: 950, letterSpacing: -0.2 },
-poSub: { fontSize: 12, color: "var(--muted)", fontWeight: 750, marginTop: 2 },
-
-bandCard: {
-  border: "1px solid rgba(29,29,29,0.10)",
-  borderRadius: 16,
-  padding: 12,
-  background: "rgba(255,255,255,0.65)",
-},
-bandHeader: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, paddingBottom: 8 },
-bandTitle: { fontWeight: 950, letterSpacing: -0.2 },
-bandMeta: { fontSize: 12, color: "var(--muted)", fontWeight: 750 },
+  bandCard: {
+    border: "1px solid rgba(29,29,29,0.10)",
+    borderRadius: 16,
+    padding: 12,
+    background: "rgba(255,255,255,0.65)",
+  },
+  bandHeader: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, paddingBottom: 8 },
+  bandTitle: { fontWeight: 950, letterSpacing: -0.2 },
+  bandMeta: { fontSize: 12, color: "var(--muted)", fontWeight: 750 },
 };

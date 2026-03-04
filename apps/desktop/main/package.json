@@ -6,12 +6,12 @@
   "scripts": {
     "start": "electron ."
   },
-
   "author": "Eric Kamakawa",
   "description": "",
   "devDependencies": {
     "electron": "^30.0.0"
+  },
+  "dependencies": {
+    "pdfkit": "^0.17.2"
   }
 }
-
-
