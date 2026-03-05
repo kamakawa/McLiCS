@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("mclist", {
-  // recents + param helpers
+  // recents + files
   getRecents: () => ipcRenderer.invoke("get-recents"),
   openParamFile: () => ipcRenderer.invoke("open-param-file"),
   exportParamFile: (paramText) => ipcRenderer.invoke("export-param-file", { paramText }),
@@ -10,16 +10,16 @@ contextBridge.exposeInMainWorld("mclist", {
   runSim: (payload) => ipcRenderer.invoke("run-sim", payload),
   cancelSim: () => ipcRenderer.invoke("cancel-sim"),
 
-  // run outputs (files)
-  listRunFiles: (workdir) => ipcRenderer.invoke("list-run-files", { workdir }),
-  readRunFile: (workdir, file, maxBytes) =>
-    ipcRenderer.invoke("read-run-file", { workdir, file, maxBytes }),
+  // run folder + io
   openRunFolder: (workdir) => ipcRenderer.invoke("open-run-folder", { workdir }),
+  listRunFiles: (workdir) => ipcRenderer.invoke("list-run-files", { workdir }),
+  readRunFile: (workdir, relPath, maxBytes) =>
+    ipcRenderer.invoke("read-run-file", { workdir, relPath, maxBytes }),
 
-  // report
+  // REPORT (PDF)
   exportReportPDF: (payload) => ipcRenderer.invoke("export-report-pdf", payload),
 
-  // events (return unsubscribe to avoid leaks)
+  // events
   onSimLog: (cb) => {
     const handler = (_e, msg) => cb(msg);
     ipcRenderer.on("sim-log", handler);

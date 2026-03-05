@@ -166,33 +166,48 @@ export default function Results() {
         alert("Export works only inside Electron.");
         return;
       }
+      if (!workdir) {
+        alert("Workdir not found for this run.");
+        return;
+      }
 
-      // logo
+      // 1) logo (dataURL)
       const logoDataUrl = await assetToDataUrl(logoPng);
 
-      // plot screenshot (do preview box)
-      const plotPng = await capturePlotPngFromDom(plotRef.current);
-      const plots = [];
-      if (plotPng) plots.push({ title: selected || "Plot", dataUrl: plotPng });
+      // 2) param.txt (texto)
+      let paramText = "";
+      try {
+        const rr = await api.readRunFile(workdir, "param.txt", 2_000_000);
+        paramText = rr?.text || "";
+      } catch {
+        paramText = "";
+      }
 
-      const meta = {
-        runId: id,
-        mode,
-        code,
-        workdir,
-        paramPath,
-        exePath,
-        logPath,
-        selectedFile: selected,
-      };
+      // 3) plot do preview (png)
+      const plotPngDataUrl = await capturePlotPngFromDom(plotRef.current);
+
+      // 4) tabela do po.dat (só se o arquivo atual for po.dat e parseou tabela)
+      let poTable = null;
+      if (selected?.toLowerCase().includes("po.dat") && table?.rows?.length) {
+        const headers = table.headers || ["T", "S", "varS", "E", "varE"];
+        // formata células pra PDF ficar bonito
+        const fmt = (v) => {
+          const n = Number(v);
+          if (!Number.isFinite(n)) return "";
+          const a = Math.abs(n);
+          if (a >= 1000 || (a > 0 && a < 0.001)) return n.toExponential(6);
+          return n.toFixed(8).replace(/0+$/g, "").replace(/\.$/g, "");
+        };
+        const rows = table.rows.map((r) => r.map(fmt));
+        poTable = { headers, rows };
+      }
 
       const res = await api.exportReportPDF({
-        meta,
         logoDataUrl,
-        paramText: paramText || "",
+        paramText,
         notes: notes || "",
-        plots,
-        files: files || [],
+        plotPngDataUrl,
+        poTable, // pode ser null
       });
 
       if (res?.canceled) return;
