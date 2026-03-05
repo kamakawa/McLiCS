@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { spawn, spawnSync } = require("child_process");
@@ -54,11 +54,24 @@ function runsBaseDir() {
   return path.join(app.getPath("documents"), "MClistRuns");
 }
 
-function safeRelPath(workdir, relPath) {
-  const abs = path.resolve(workdir, relPath);
-  const base = path.resolve(workdir);
-  if (!abs.startsWith(base)) throw new Error("Invalid path.");
-  return abs;
+// normaliza symlinks / caminhos reais
+function realPath(p) {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+// garante que child está dentro de parent (considerando realpath/symlinks)
+function safeInsideReal(parent, child) {
+  const P = realPath(parent);
+  const C = realPath(child);
+
+  if (P === C) return true;
+
+  const rel = path.relative(P, C);
+  return rel && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
 /* ================= RECENTS ================= */
@@ -75,73 +88,108 @@ function loadRecents() {
   }
 }
 
-ipcMain.handle("get-recents", async () => {
-  return loadRecents();
-});
+ipcMain.handle("get-recents", async () => loadRecents());
 
-/* ================= RUN FOLDER / IO ================= */
+/* ================= RUN FILES ================= */
 
-ipcMain.handle("open-run-folder", async (_event, { workdir }) => {
-  if (!workdir) return { ok: false };
-  await shell.openPath(workdir);
-  return { ok: true };
-});
-
-function listFilesRecursive(dir, baseDir, out) {
+function walkFiles(dir, out = [], base = dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const e of entries) {
-    const full = path.join(dir, e.name);
-    if (e.isDirectory()) {
-      listFilesRecursive(full, baseDir, out);
-    } else if (e.isFile()) {
-      out.push(path.relative(baseDir, full));
+  for (const ent of entries) {
+    const full = path.join(dir, ent.name);
+    if (ent.isDirectory()) {
+      if (ent.name === ".git" || ent.name === "node_modules") continue;
+      walkFiles(full, out, base);
+    } else {
+      out.push(path.relative(base, full));
     }
   }
+  return out;
 }
 
-ipcMain.handle("list-run-files", async (_event, { workdir }) => {
-  if (!workdir || !fs.existsSync(workdir)) return { files: [] };
+ipcMain.handle("list-run-files", async (_e, { workdir }) => {
+  if (!workdir) return { files: [] };
+  if (!fs.existsSync(workdir)) return { files: [] };
 
-  const out = [];
-  listFilesRecursive(workdir, workdir, out);
+  const base = runsBaseDir();
 
-  // ordena: po.dat primeiro (se existir), depois resto
-  out.sort((a, b) => {
-    const aa = a.toLowerCase();
-    const bb = b.toLowerCase();
-    const ap = aa.endsWith("po.dat") ? -1 : 0;
-    const bp = bb.endsWith("po.dat") ? -1 : 0;
-    if (ap !== bp) return ap - bp;
-    return aa.localeCompare(bb);
-  });
+  // segurança com realpath (resolve symlinks)
+  if (!safeInsideReal(base, workdir)) {
+    const msg =
+      `Invalid workdir (outside MClistRuns).\n` +
+      `base=${base}\n` +
+      `workdir=${workdir}\n` +
+      `baseReal=${realPath(base)}\n` +
+      `workdirReal=${realPath(workdir)}\n`;
+    throw new Error(msg);
+  }
 
-  return { files: out };
+  const files = walkFiles(workdir).sort((a, b) => a.localeCompare(b));
+  return { files };
 });
 
-ipcMain.handle("read-run-file", async (_event, { workdir, relPath, maxBytes = 2_000_000 }) => {
+ipcMain.handle("read-run-file", async (_e, { workdir, relPath, maxBytes = 2_000_000 }) => {
   if (!workdir || !relPath) return { text: "", truncated: false };
-  const abs = safeRelPath(workdir, relPath);
-  if (!fs.existsSync(abs)) return { text: "", truncated: false };
+
+  const base = runsBaseDir();
+
+  if (!safeInsideReal(base, workdir)) {
+    throw new Error(
+      `Invalid workdir (outside MClistRuns).\nbase=${base}\nworkdir=${workdir}`
+    );
+  }
+
+  const abs = path.resolve(workdir, relPath);
+
+  // segurança: arquivo precisa ficar dentro do workdir
+  if (!safeInsideReal(workdir, abs)) {
+    throw new Error(`Invalid file path.\nworkdir=${workdir}\nabs=${abs}`);
+  }
+
+  if (!fs.existsSync(abs)) {
+    return { text: "", truncated: false, error: "File not found." };
+  }
 
   const stat = fs.statSync(abs);
-  const size = stat.size;
+  const limit = Math.max(1_000, Number(maxBytes) || 2_000_000);
 
   const fd = fs.openSync(abs, "r");
   try {
-    const toRead = Math.min(size, maxBytes);
-    const buf = Buffer.alloc(toRead);
-    fs.readSync(fd, buf, 0, toRead, 0);
-    const text = buf.toString("utf8");
-    return { text, truncated: size > maxBytes };
+    const size = Math.min(stat.size, limit);
+    const buf = Buffer.alloc(size);
+    fs.readSync(fd, buf, 0, size, 0);
+
+    const truncated = stat.size > limit;
+    let text = buf.toString("utf8");
+
+    if (truncated) {
+      text += `\n\n--- TRUNCATED: showing first ${size} bytes of ${stat.size} ---\n`;
+    }
+
+    return { text, truncated };
   } finally {
     fs.closeSync(fd);
   }
 });
 
+ipcMain.handle("open-run-folder", async (_e, { workdir }) => {
+  if (!workdir) return { ok: false };
+  if (!fs.existsSync(workdir)) return { ok: false };
+
+  const base = runsBaseDir();
+  if (!safeInsideReal(base, workdir)) {
+    throw new Error("Invalid workdir (outside MClistRuns).");
+  }
+
+  await shell.openPath(workdir);
+  return { ok: true };
+});
+
 /* ================= RUN ================= */
 
 ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
-  if (running?.child) throw new Error("A simulation is already running.");
+  if (running?.child) {
+    throw new Error("A simulation is already running.");
+  }
 
   const id = `${Date.now()}`;
 
@@ -153,92 +201,74 @@ ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
   fs.writeFileSync(paramPath, String(paramText || ""), "utf8");
 
   const backend = backendDir();
-  const logPath = path.join(workdir, "run.log");
 
-  const log = (s) => {
-    fs.appendFileSync(logPath, s + "\n", "utf8");
-  };
+  console.log("===== COMPILING BACKEND =====");
+  console.log("Mode:", mode);
+  console.log("Backend:", backend);
 
-  log(`=== MClist run ${id} ===`);
-  log(`mode=${mode}`);
-  log(`backend=${backend}`);
-  log(`param=${paramPath}`);
-  log(`workdir=${workdir}`);
-  log("");
-
-  // compilar
-  log("=== compiling ===");
   const makeArgs = mode === "cpu" ? ["CPU"] : [];
-  const compile = spawnSync("make", makeArgs, { cwd: backend, encoding: "utf8" });
+  const compile = spawnSync("make", makeArgs, {
+    cwd: backend,
+    encoding: "utf8",
+  });
 
-  if (compile.stdout) {
-    send("sim-log", { id, type: "stdout", data: compile.stdout });
-    log(compile.stdout.trimEnd());
-  }
-  if (compile.stderr) {
-    send("sim-log", { id, type: "stderr", data: compile.stderr });
-    log(compile.stderr.trimEnd());
-  }
+  if (compile.stdout) send("sim-log", { id, type: "stdout", data: compile.stdout });
+  if (compile.stderr) send("sim-log", { id, type: "stderr", data: compile.stderr });
 
   if (compile.status !== 0) {
-    log("\n=== compilation FAILED ===");
-    throw new Error("Compilation failed. Check run.log in workdir.");
+    throw new Error("Compilation failed. Check logs in Running screen / terminal.");
   }
 
-  log("\n=== compilation OK ===\n");
+  console.log("Compilation OK");
 
   const exeName = mode === "cpu" ? "mc_sim_cpu" : "mc_sim";
   const exePath = path.join(backend, exeName);
 
   if (!fs.existsSync(exePath)) {
-    log(`Binary not found after compilation: ${exePath}`);
     throw new Error(`Binary not found after compilation: ${exePath}`);
   }
 
-  log("=== starting simulation ===");
-  log(`exe=${exePath}`);
-  log(`param=${paramPath}`);
-  log(`cwd=${workdir}`);
-  log("");
+  console.log("===== STARTING SIMULATION =====");
+  console.log("Executable:", exePath);
+  console.log("Param:", paramPath);
+  console.log("Workdir:", workdir);
 
-  const child = spawn(exePath, [paramPath], { cwd: workdir });
+  // IMPORTANT: passamos só o nome do arquivo, porque cwd=workdir
+  // (isso evita caminhos longos e reduz chance de parser quebrar)
+  const child = spawn(exePath, ["param.txt"], { cwd: workdir });
 
   running = { id, child };
 
   child.stdout.on("data", (d) => {
-    const s = d.toString();
-    send("sim-log", { id, type: "stdout", data: s });
-    fs.appendFileSync(logPath, s, "utf8");
+    send("sim-log", { id, type: "stdout", data: d.toString() });
   });
 
   child.stderr.on("data", (d) => {
-    const s = d.toString();
-    send("sim-log", { id, type: "stderr", data: s });
-    fs.appendFileSync(logPath, s, "utf8");
+    send("sim-log", { id, type: "stderr", data: d.toString() });
   });
 
   child.on("close", (code) => {
-    log(`\n\n=== exit code: ${code} ===`);
-    send("sim-done", { id, code, workdir, paramPath, exePath, mode, logPath });
+    send("sim-done", { id, code, workdir, paramPath, exePath, mode });
     running = null;
   });
 
   child.on("error", (err) => {
-    log(`\n\n=== spawn error: ${err.message} ===`);
-    send("sim-done", { id, code: -1, error: err.message, workdir, paramPath, exePath, mode, logPath });
+    send("sim-done", { id, code: -1, error: err.message, workdir, paramPath, exePath, mode });
     running = null;
   });
 
-  return { id, workdir, paramPath, exePath, mode, logPath };
+  return { id, workdir, paramPath, exePath, mode };
 });
 
 /* ================= CANCEL ================= */
 
 ipcMain.handle("cancel-sim", async () => {
   if (!running?.child) return { ok: false };
+
   try {
     running.child.kill("SIGTERM");
   } catch {}
+
   running = null;
   return { ok: true };
 });
