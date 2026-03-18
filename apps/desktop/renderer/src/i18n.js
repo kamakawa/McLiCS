@@ -2,10 +2,11 @@ export const LANG_OPTIONS = [
   { value: "en", label: "🇺🇸 EN" },
   { value: "pt-BR", label: "🇧🇷 PT-BR" },
   { value: "es", label: "🇪🇸 ES" },
-  { value: "fr", label: "🇫🇷 FR" },   
+  { value: "fr", label: "🇫🇷 FR" },
   { value: "ja", label: "🇯🇵 日本語" },
   { value: "zh", label: "🇨🇳 中文" },
 ];
+
 const LANG_ALIASES = {
   pt: "pt-BR",
   "pt-br": "pt-BR",
@@ -170,6 +171,41 @@ const dict = {
     orderParameterVsTemperature: "Order parameter S vs Temperature",
     energyVsTemperature: "Energy E vs Temperature",
     tableCsvName: "table.csv",
+
+    currentActivity: "Current activity",
+    scientificNote: "Scientific note",
+
+    statusMessages: {
+      starting: [
+        "Initializing simulation environment",
+        "Loading numerical configuration",
+        "Preparing lattice structure",
+        "Validating simulation parameters",
+      ],
+      compiling: [
+        "Compiling simulation core",
+        "Preparing execution binaries",
+        "Optimizing runtime environment",
+        "Building numerical modules",
+      ],
+      running: [
+        "Running Monte Carlo routine",
+        "Processing thermal variation",
+        "Sampling molecular configurations",
+        "Updating system states",
+      ],
+    },
+
+    scienceFacts: [
+      "Liquid crystals exhibit properties between conventional liquids and solid crystals.",
+      "The order parameter is used to quantify molecular alignment in liquid crystal systems.",
+      "Small temperature changes can significantly affect phase transitions.",
+      "Monte Carlo methods use stochastic sampling to explore equilibrium behavior.",
+      "Liquid crystals are widely used in display technologies such as LCD screens.",
+      "Thermal fluctuations play an important role in the organization of molecules.",
+      "Numerical simulations help investigate systems that are difficult to solve analytically.",
+      "Boundary conditions can strongly influence the final configuration of the system.",
+    ],
   },
 
   "pt-BR": {
@@ -308,123 +344,218 @@ const dict = {
     orderParameterVsTemperature: "Parâmetro de ordem S vs Temperatura",
     energyVsTemperature: "Energia E vs Temperatura",
     tableCsvName: "tabela.csv",
+
+    currentActivity: "Atividade atual",
+    scientificNote: "Nota científica",
+
+    statusMessages: {
+      starting: [
+        "Inicializando o ambiente da simulação",
+        "Carregando configuração numérica",
+        "Preparando a estrutura da rede",
+        "Validando os parâmetros da simulação",
+      ],
+      compiling: [
+        "Compilando o núcleo da simulação",
+        "Preparando binários de execução",
+        "Otimizando o ambiente de execução",
+        "Construindo módulos numéricos",
+      ],
+      running: [
+        "Executando a rotina de Monte Carlo",
+        "Processando a variação térmica",
+        "Amostrando configurações moleculares",
+        "Atualizando os estados do sistema",
+      ],
+    },
+
+    scienceFacts: [
+      "Cristais líquidos apresentam propriedades intermediárias entre líquidos convencionais e sólidos cristalinos.",
+      "O parâmetro de ordem é usado para quantificar o alinhamento molecular em sistemas de cristais líquidos.",
+      "Pequenas variações de temperatura podem afetar significativamente as transições de fase.",
+      "Métodos de Monte Carlo usam amostragem estocástica para explorar o comportamento de equilíbrio.",
+      "Cristais líquidos são amplamente usados em tecnologias de display, como telas LCD.",
+      "Flutuações térmicas exercem um papel importante na organização das moléculas.",
+      "Simulações numéricas ajudam a investigar sistemas difíceis de resolver analiticamente.",
+      "As condições de contorno podem influenciar fortemente a configuração final do sistema.",
+    ],
   },
 
-fr: {
-  appSubtitle: "Simulateur Monte Carlo",
-  toggleTheme: "Changer le thème",
-  language: "Langue",
+  fr: {
+    appSubtitle: "Simulateur Monte Carlo",
+    toggleTheme: "Changer le thème",
+    language: "Langue",
+    welcome: "Bienvenue",
+    welcomeSub:
+      "Démarrez une nouvelle simulation de cristaux liquides ou ouvrez un projet existant. Gardez les exécutions, notes et rapports au même endroit.",
+    newSimulation: "Nouvelle Simulation",
+    openProject: "Ouvrir un Projet",
+    recentProjects: "Projets Récents",
+    lastOpened: "5 derniers ouverts",
+    noRecentProjects: "Aucun projet récent",
+    noRecentProjectsHint: "Cliquez sur Nouvelle Simulation ou Ouvrir un Projet pour commencer.",
+    homeTip:
+      "Astuce : ouvrez une exécution précédente pour régénérer les graphiques, ajouter des notes et exporter un rapport.",
+    projectSetup: "Configuration du Projet",
+    projectSetupSub: "Configurez les paramètres et exécutez sur CPU ou GPU.",
+    back: "Retour",
+    exportParameters: "Exporter les paramètres",
+    grid: "Grille",
+    monteCarlo: "Monte Carlo",
+    temperatureSchedule: "Programme de température",
+    potentialPhysics: "Potentiel / physique",
+    initializationEvolution: "Initialisation et évolution",
+    geometryBoundaries: "Géométrie et frontières",
+    anchoringOptional: "Conditions d’ancrage (optionnel)",
+    optional: "optionnel",
+    duplicate: "Dupliquer",
+    remove: "Supprimer",
+    anchoringFormat: "Format : anchoring_type {index} TYPE • W {index} VALUE",
+    anchoringHint:
+      "Si vous ne voulez pas d’ancrage : supprimez toutes les cartes. Le param.txt généré ne contiendra rien sur l’ancrage.",
+    addAnchoring: "+ Ajouter Ancrage",
+    runSimulation: "Lancer la simulation",
+    runSimulationSub: "CPU: make CPU → mc_sim_cpu • GPU: make → mc_sim",
+    runCPU: "Exécuter CPU",
+    runGPU: "Exécuter GPU",
+    electronOnlyFeature:
+      "Cette fonctionnalité fonctionne uniquement dans l’application Electron.",
+    savedAt: "Enregistré à : {path}",
+    exportError: "Erreur d’export :\n{error}",
+    electronOnlyRun: "L’exécution fonctionne uniquement dans l’application Electron.",
+    unexpectedRunResponse: "L’exécution a renvoyé une réponse inattendue :\n{data}",
+    runError: "Erreur lors de l’exécution {mode} :\n{error}",
+    execution: "Exécution",
+    statusRunning: "En cours",
+    statusCompiling: "Compilation",
+    statusStarting: "Démarrage",
+    waitingOutput:
+      "En attente de sortie… (certaines simulations sont silencieuses, c’est normal)",
+    liveOutput: "Sortie en temps réel (stdout / stderr)",
+    copyLogs: "Copier les logs",
+    clear: "Effacer",
+    autoScroll: "Défilement automatique",
+    on: "ACTIVÉ",
+    off: "DÉSACTIVÉ",
+    cancel: "Annuler",
+    copyLogsTitle: "Copier toutes les lignes de la console",
+    clearConsoleTitle: "Effacer la console (n’arrête pas la simulation)",
+    autoScrollTitle: "Activer/désactiver le défilement automatique",
+    cancelTitle: "Arrêter la simulation",
+    runId: "ID d’exécution",
+    workdir: "Dossier de travail",
+    paramFile: "Fichier de paramètres",
+    logFile: "Fichier de log",
+    console: "Console",
+    runningTip: "Astuce : si le backend n’affiche rien pendant la boucle, vous pouvez quand même consulter run.log.",
+    noOutputYet: "Pas encore de sortie",
+    noOutputYetText:
+      "Cela peut arriver si la simulation est en compilation ou si le backend est silencieux pendant l’exécution.\nGardez cet écran ouvert — les résultats apparaîtront automatiquement à la fin.",
+    cancelError: "Erreur d’annulation :\n{error}",
+    copyError: "Erreur de copie :\n{error}",
+    backToSetup: "Retour à la configuration",
+    home: "Accueil",
+    openFolder: "Ouvrir le dossier",
+    openRunFolder: "Ouvrir le dossier d’exécution",
+    results: "Résultats",
+    success: "Succès",
+    failed: "Échec",
+    exitCode: "Code de sortie",
+    param: "Paramètre",
+    log: "Log",
+    exe: "Exécutable",
+    plots: "Graphiques",
+    files: "Fichiers",
+    notesReport: "Notes et Rapport",
+    dataSource: "Source de données",
+    dataSourceSub: "Sélectionnez un fichier de sortie (.dat/.txt/.csv) à tracer.",
+    numericFileWarn:
+      "Ce fichier ne semble pas contenir un tableau numérique. Choisissez un fichier .dat / .csv / .txt.",
+    parseTableWarn:
+      "Impossible d’analyser le tableau numérique. Vérifiez si les nombres sont séparés par des espaces, des tabulations ou des virgules.",
+    parsedTable: "{rows} lignes analysées • {cols} colonnes.",
+    parameters: "Paramètres",
+    parametersParamTxt: "Paramètres (param.txt)",
+    parsedParamsSub: "Paramètres clé/valeur analysés pour cette exécution.",
+    parseParamWarn: "Impossible d’analyser le param.txt (ou vide).",
+    plot: "Graphique",
+    plotSub: "Tracé automatique : X = colonne 0, Y = colonnes 1..N.",
+    noPlotData: "Aucune donnée numérique sélectionnée pour le tracé.",
+    preview: "Aperçu",
+    tableViewFirstRows: "Vue tableau (200 premières lignes).",
+    textView: "Vue texte.",
+    truncated: "(tronqué)",
+    empty: "(vide)",
+    filesSub: "Sorties créées par la simulation dans ce dossier d’exécution.",
+    content: "Contenu",
+    selectFile: "Sélectionnez un fichier",
+    notes: "Notes",
+    notesSub: "Écrivez toute observation sur cette exécution. Sauvegardé localement (par id/workdir).",
+    notesPlaceholder: "Décrivez ce que vous avez observé, hypothèses, paramètres, etc.",
+    clearNotesTitle: "Effacer les notes (uniquement cette exécution)",
+    generatePdf: "Générer PDF",
+    generatePdfTitle: "Générer un rapport PDF avec logo + paramètres + graphique + notes",
+    reportPreview: "Aperçu du rapport",
+    reportPreviewSub: "Cette image d’aperçu sera intégrée au rapport PDF.",
+    noPlotPreview: "Aucun graphique disponible pour l’aperçu.",
+    reportTip: "Astuce : sélectionnez po.dat dans Fichiers/Graphiques avant l’export pour capturer le bon graphique.",
+    parametersPdfSub: "Ils seront intégrés au PDF.",
+    noParameters: "Aucun paramètre.",
+    paramsCount: "Paramètres",
+    key: "Clé",
+    value: "Valeur",
+    rows: "Lignes",
+    search: "Rechercher…",
+    perPage50: "50 / page",
+    perPage100: "100 / page",
+    perPage200: "200 / page",
+    copyCsv: "Copier CSV",
+    downloadCsv: "Télécharger CSV",
+    csvCopied: "CSV copié !",
+    exportWorksElectron: "L’export fonctionne uniquement dans Electron.",
+    workdirNotFound: "Dossier de travail introuvable pour cette exécution.",
+    poDatNotFound: "po.dat est introuvable dans ce dossier d’exécution.",
+    poDatParseError: "Impossible d’analyser po.dat pour le rapport PDF.",
+    poDatColumnsError: "Impossible d’identifier les colonnes de po.dat (T, S, varS, E, varE).",
+    orderParameterVsTemperature: "Paramètre d’ordre S vs Température",
+    energyVsTemperature: "Énergie E vs Température",
+    tableCsvName: "table-fr.csv",
 
-  welcome: "Bienvenue",
-  welcomeSub:
-    "Démarrez une nouvelle simulation de cristaux liquides ou ouvrez un projet existant. Gardez les exécutions, notes et rapports au même endroit.",
+    currentActivity: "Activité actuelle",
+    scientificNote: "Note scientifique",
 
-  newSimulation: "Nouvelle Simulation",
-  openProject: "Ouvrir un Projet",
-  recentProjects: "Projets Récents",
-  lastOpened: "5 derniers ouverts",
+    statusMessages: {
+      starting: [
+        "Initialisation de l’environnement de simulation",
+        "Chargement de la configuration numérique",
+        "Préparation de la structure du réseau",
+        "Validation des paramètres de simulation",
+      ],
+      compiling: [
+        "Compilation du noyau de simulation",
+        "Préparation des binaires d’exécution",
+        "Optimisation de l’environnement d’exécution",
+        "Construction des modules numériques",
+      ],
+      running: [
+        "Exécution de la routine Monte Carlo",
+        "Traitement de la variation thermique",
+        "Échantillonnage des configurations moléculaires",
+        "Mise à jour des états du système",
+      ],
+    },
 
-  noRecentProjects: "Aucun projet récent",
-  noRecentProjectsHint: "Cliquez sur Nouvelle Simulation ou Ouvrir un Projet pour commencer.",
-
-  homeTip:
-    "Astuce : ouvrez une exécution précédente pour régénérer les graphiques, ajouter des notes et exporter un rapport.",
-
-  projectSetup: "Configuration du Projet",
-  projectSetupSub: "Configurez les paramètres et exécutez sur CPU ou GPU.",
-
-  back: "Retour",
-  exportParameters: "Exporter les paramètres",
-
-  grid: "Grille",
-  monteCarlo: "Monte Carlo",
-  temperatureSchedule: "Programme de température",
-  potentialPhysics: "Potentiel / physique",
-  initializationEvolution: "Initialisation et évolution",
-  geometryBoundaries: "Géométrie et frontières",
-
-  anchoringOptional: "Conditions d’ancrage (optionnel)",
-  optional: "optionnel",
-  duplicate: "Dupliquer",
-  remove: "Supprimer",
-
-  addAnchoring: "+ Ajouter Ancrage",
-
-  runSimulation: "Lancer la simulation",
-  runSimulationSub: "CPU: make CPU → mc_sim_cpu • GPU: make → mc_sim",
-
-  runCPU: "Exécuter CPU",
-  runGPU: "Exécuter GPU",
-
-  electronOnlyFeature:
-    "Cette fonctionnalité fonctionne uniquement dans l’application Electron.",
-
-  savedAt: "Enregistré à : {path}",
-  exportError: "Erreur d’export :\n{error}",
-
-  execution: "Exécution",
-  statusRunning: "En cours",
-  statusCompiling: "Compilation",
-  statusStarting: "Démarrage",
-
-  waitingOutput:
-    "En attente de sortie… (certaines simulations sont silencieuses, c’est normal)",
-
-  liveOutput: "Sortie en temps réel (stdout / stderr)",
-
-  copyLogs: "Copier les logs",
-  clear: "Effacer",
-  autoScroll: "Défilement automatique",
-
-  on: "ACTIVÉ",
-  off: "DÉSACTIVÉ",
-
-  cancel: "Annuler",
-
-  runId: "ID d’exécution",
-  workdir: "Dossier de travail",
-  paramFile: "Fichier de paramètres",
-  logFile: "Fichier de log",
-
-  console: "Console",
-
-  noOutputYet: "Pas encore de sortie",
-  noOutputYetText:
-    "Cela peut arriver si la simulation est en compilation ou si le backend est silencieux.\nGardez cet écran ouvert — les résultats apparaîtront automatiquement.",
-
-  backToSetup: "Retour à la configuration",
-  home: "Accueil",
-  openFolder: "Ouvrir le dossier",
-
-  results: "Résultats",
-  success: "Succès",
-  failed: "Échec",
-
-  exitCode: "Code de sortie",
-
-  plots: "Graphiques",
-  files: "Fichiers",
-  notesReport: "Notes et Rapport",
-
-  parameters: "Paramètres",
-
-  plot: "Graphique",
-  noPlotData: "Aucune donnée à afficher",
-
-  preview: "Aperçu",
-
-  notes: "Notes",
-  notesPlaceholder:
-    "Décrivez vos observations, hypothèses, paramètres, etc.",
-
-  generatePdf: "Générer PDF",
-
-  orderParameterVsTemperature:
-    "Paramètre d’ordre S vs Température",
-
-  energyVsTemperature:
-    "Énergie E vs Température",
-},
+    scienceFacts: [
+      "Les cristaux liquides présentent des propriétés intermédiaires entre les liquides conventionnels et les solides cristallins.",
+      "Le paramètre d’ordre est utilisé pour quantifier l’alignement moléculaire dans les systèmes de cristaux liquides.",
+      "De petites variations de température peuvent affecter fortement les transitions de phase.",
+      "Les méthodes de Monte Carlo utilisent un échantillonnage stochastique pour explorer le comportement d’équilibre.",
+      "Les cristaux liquides sont largement utilisés dans les technologies d’affichage comme les écrans LCD.",
+      "Les fluctuations thermiques jouent un rôle important dans l’organisation moléculaire.",
+      "Les simulations numériques aident à étudier des systèmes difficiles à résoudre analytiquement.",
+      "Les conditions aux limites peuvent fortement influencer la configuration finale du système.",
+    ],
+  },
 
   es: {
     appSubtitle: "Simulador de Monte Carlo",
@@ -562,6 +693,41 @@ fr: {
     orderParameterVsTemperature: "Parámetro de orden S vs Temperatura",
     energyVsTemperature: "Energía E vs Temperatura",
     tableCsvName: "tabla.csv",
+
+    currentActivity: "Actividad actual",
+    scientificNote: "Nota científica",
+
+    statusMessages: {
+      starting: [
+        "Inicializando el entorno de simulación",
+        "Cargando configuración numérica",
+        "Preparando la estructura de la red",
+        "Validando los parámetros de simulación",
+      ],
+      compiling: [
+        "Compilando el núcleo de simulación",
+        "Preparando binarios de ejecución",
+        "Optimizando el entorno de ejecución",
+        "Construyendo módulos numéricos",
+      ],
+      running: [
+        "Ejecutando la rutina de Monte Carlo",
+        "Procesando la variación térmica",
+        "Muestreando configuraciones moleculares",
+        "Actualizando los estados del sistema",
+      ],
+    },
+
+    scienceFacts: [
+      "Los cristales líquidos presentan propiedades intermedias entre líquidos convencionales y sólidos cristalinos.",
+      "El parámetro de orden se usa para cuantificar la alineación molecular en sistemas de cristales líquidos.",
+      "Pequeñas variaciones de temperatura pueden afectar significativamente las transiciones de fase.",
+      "Los métodos de Monte Carlo utilizan muestreo estocástico para explorar el comportamiento de equilibrio.",
+      "Los cristales líquidos se usan ampliamente en tecnologías de visualización como las pantallas LCD.",
+      "Las fluctuaciones térmicas desempeñan un papel importante en la organización molecular.",
+      "Las simulaciones numéricas ayudan a investigar sistemas difíciles de resolver analíticamente.",
+      "Las condiciones de contorno pueden influir fuertemente en la configuración final del sistema.",
+    ],
   },
 
   ja: {
@@ -700,6 +866,41 @@ fr: {
     orderParameterVsTemperature: "秩序パラメータ S vs 温度",
     energyVsTemperature: "エネルギー E vs 温度",
     tableCsvName: "table-ja.csv",
+
+    currentActivity: "現在のアクティビティ",
+    scientificNote: "科学メモ",
+
+    statusMessages: {
+      starting: [
+        "シミュレーション環境を初期化しています",
+        "数値設定を読み込んでいます",
+        "格子構造を準備しています",
+        "シミュレーションパラメータを検証しています",
+      ],
+      compiling: [
+        "シミュレーションコアをコンパイルしています",
+        "実行バイナリを準備しています",
+        "実行環境を最適化しています",
+        "数値モジュールを構築しています",
+      ],
+      running: [
+        "モンテカルロルーチンを実行しています",
+        "温度変化を処理しています",
+        "分子配置をサンプリングしています",
+        "系の状態を更新しています",
+      ],
+    },
+
+    scienceFacts: [
+      "液晶は、通常の液体と結晶性固体の中間的な性質を示します。",
+      "秩序パラメータは、液晶系における分子配向を定量化するために使われます。",
+      "わずかな温度変化でも相転移に大きな影響を与えることがあります。",
+      "モンテカルロ法は、平衡挙動を調べるために確率的サンプリングを用います。",
+      "液晶はLCDなどの表示技術で広く利用されています。",
+      "熱ゆらぎは分子の配列に重要な役割を果たします。",
+      "数値シミュレーションは解析的に解くのが難しい系の研究に役立ちます。",
+      "境界条件は系の最終的な構成に強く影響することがあります。",
+    ],
   },
 
   zh: {
@@ -834,11 +1035,51 @@ fr: {
     orderParameterVsTemperature: "序参量 S 与温度",
     energyVsTemperature: "能量 E 与温度",
     tableCsvName: "table-zh.csv",
+
+    currentActivity: "当前活动",
+    scientificNote: "科学说明",
+
+    statusMessages: {
+      starting: [
+        "正在初始化模拟环境",
+        "正在加载数值配置",
+        "正在准备晶格结构",
+        "正在验证模拟参数",
+      ],
+      compiling: [
+        "正在编译模拟核心",
+        "正在准备执行二进制文件",
+        "正在优化运行环境",
+        "正在构建数值模块",
+      ],
+      running: [
+        "正在执行蒙特卡洛过程",
+        "正在处理热变化",
+        "正在采样分子构型",
+        "正在更新系统状态",
+      ],
+    },
+
+    scienceFacts: [
+      "液晶具有介于普通液体和晶体固体之间的性质。",
+      "序参量用于量化液晶系统中的分子排列程度。",
+      "微小的温度变化可能显著影响相变。",
+      "蒙特卡洛方法通过随机采样来研究平衡行为。",
+      "液晶广泛应用于LCD等显示技术中。",
+      "热涨落在分子组织中起着重要作用。",
+      "数值模拟有助于研究难以解析求解的系统。",
+      "边界条件会强烈影响系统的最终构型。",
+    ],
   },
 };
 
 export function translate(lang, key, vars = {}) {
   const base = dict[normalizeLang(lang)] || dict.en;
-  const template = base[key] ?? dict.en[key] ?? key;
-  return String(template).replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? `{${k}}`));
+  const value = base[key] ?? dict.en[key] ?? key;
+
+  if (typeof value === "string") {
+    return value.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? `{${k}}`));
+  }
+
+  return value;
 }
