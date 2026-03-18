@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import logo from "../assets/logo.png";
+import logoDark from "../assets/logo-dark.png";
 import { useUi } from "../components/Shell.jsx";
 import { LANG_OPTIONS } from "../i18n.js";
 
@@ -9,6 +10,7 @@ const api = window.mclist;
 export default function Home() {
   const nav = useNavigate();
   const { theme, setTheme, lang, setLang, t } = useUi();
+  const currentLogo = theme === "dark" ? logoDark : logo;
 
   const [recents, setRecents] = useState([]);
   const [hoverPrimary, setHoverPrimary] = useState(false);
@@ -66,7 +68,7 @@ export default function Home() {
             </select>
           </div>
 
-          <img src={logo} alt="MClist" style={s.logo} />
+          <img src={currentLogo} alt="MClist" style={s.logo} />
 
           <div style={s.headline}>{t("welcome")}</div>
           <div style={s.sub}>{t("welcomeSub")}</div>
