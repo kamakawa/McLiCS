@@ -20,7 +20,6 @@ function createWindow() {
     },
   });
 
-  // DEV (Vite)
   mainWindow.loadURL("http://localhost:5173/");
 }
 
@@ -54,7 +53,6 @@ function runsBaseDir() {
   return path.join(app.getPath("documents"), "MClistRuns");
 }
 
-// normaliza symlinks / caminhos reais
 function realPath(p) {
   try {
     return fs.realpathSync(p);
@@ -63,7 +61,6 @@ function realPath(p) {
   }
 }
 
-// garante que child está dentro de parent (considerando realpath/symlinks)
 function safeInsideReal(parent, child) {
   const P = realPath(parent);
   const C = realPath(child);
@@ -71,7 +68,7 @@ function safeInsideReal(parent, child) {
   if (P === C) return true;
 
   const rel = path.relative(P, C);
-  return rel && !rel.startsWith("..") && !path.isAbsolute(rel);
+  return !!rel && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
 /* ================= RECENTS ================= */
@@ -88,7 +85,167 @@ function loadRecents() {
   }
 }
 
+function saveRecents(items) {
+  try {
+    fs.writeFileSync(recentsFile(), JSON.stringify(items, null, 2), "utf8");
+  } catch (e) {
+    console.error("saveRecents error:", e);
+  }
+}
+
+function touchRecent(filePath) {
+  if (!filePath) return loadRecents();
+
+  const existing = loadRecents().filter((r) => r?.path !== filePath);
+
+  const name = path.basename(filePath);
+  const item = {
+    name,
+    path: filePath,
+    lastOpenedAt: Date.now(),
+  };
+
+  const next = [item, ...existing].slice(0, 20);
+  saveRecents(next);
+  return next;
+}
+
 ipcMain.handle("get-recents", async () => loadRecents());
+
+/* ================= PARAM FILE PARSER ================= */
+
+function defaultParams() {
+  return {
+    Nx: "20",
+    Ny: "20",
+    Nz: "10",
+    MCS: "1000",
+    MCT: "20000",
+    potential: "ghrl",
+    Ti: "0.3",
+    Tf: "0.1",
+    dT: "-0.05",
+    p0: "0",
+    fn: "2",
+    nk: "",
+    k11: "1",
+    k22: "1.0",
+    k33: "1",
+    ic: "random",
+    evol: "thermal",
+    geometry: "slab",
+    boundary_file: "",
+    xbound: "periodic",
+    ybound: "periodic",
+    zbound: "periodic",
+    anchoring: [],
+  };
+}
+
+function parseParamText(text) {
+  const params = defaultParams();
+  const lines = String(text || "").replace(/\r/g, "").split("\n");
+
+  const anchoringMap = new Map();
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const parts = line.split(/\s+/);
+    const key = parts[0];
+
+    if (!key) continue;
+
+    // Anchoring format:
+    // anchoring_type 0 homeotropic
+    // W 0 1
+    // phi_s 0 0
+    // theta_s 0 90
+    if (key === "anchoring_type" && parts.length >= 3) {
+      const idx = Number(parts[1]);
+      const type = parts.slice(2).join(" ");
+      if (!Number.isNaN(idx)) {
+        const cur = anchoringMap.get(idx) || { id: idx, type: "", W: "", phi_s: "", theta_s: "" };
+        cur.type = type;
+        anchoringMap.set(idx, cur);
+      }
+      continue;
+    }
+
+    if ((key === "W" || key === "phi_s" || key === "theta_s") && parts.length >= 3) {
+      const idx = Number(parts[1]);
+      const val = parts.slice(2).join(" ");
+      if (!Number.isNaN(idx)) {
+        const cur = anchoringMap.get(idx) || { id: idx, type: "", W: "", phi_s: "", theta_s: "" };
+        cur[key] = val;
+        anchoringMap.set(idx, cur);
+      }
+      continue;
+    }
+
+    const value = parts.slice(1).join(" ");
+    if (value === "") continue;
+
+    if (key in params) {
+      params[key] = value;
+    }
+  }
+
+  params.anchoring = Array.from(anchoringMap.values()).sort((a, b) => a.id - b.id);
+  return params;
+}
+
+/* ================= PARAM FILE DIALOGS ================= */
+
+ipcMain.handle("open-param-file", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Open parameter file",
+    properties: ["openFile"],
+    filters: [
+      { name: "Parameter files", extensions: ["txt", "dat", "cfg"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  });
+
+  if (result.canceled || !result.filePaths?.length) {
+    return { canceled: true };
+  }
+
+  const filePath = result.filePaths[0];
+  const text = fs.readFileSync(filePath, "utf8");
+  const params = parseParamText(text);
+  const recents = touchRecent(filePath);
+
+  return {
+    canceled: false,
+    filePath,
+    text,
+    params,
+    recents,
+  };
+});
+
+ipcMain.handle("export-param-file", async (_e, { paramText }) => {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: "Export parameter file",
+    defaultPath: path.join(app.getPath("documents"), "param.txt"),
+    filters: [{ name: "Text", extensions: ["txt"] }],
+  });
+
+  if (result.canceled || !result.filePath) {
+    return { canceled: true };
+  }
+
+  fs.writeFileSync(result.filePath, String(paramText || ""), "utf8");
+  const recents = touchRecent(result.filePath);
+
+  return {
+    canceled: false,
+    filePath: result.filePath,
+    recents,
+  };
+});
 
 /* ================= RUN FILES ================= */
 
@@ -112,7 +269,6 @@ ipcMain.handle("list-run-files", async (_e, { workdir }) => {
 
   const base = runsBaseDir();
 
-  // segurança com realpath (resolve symlinks)
   if (!safeInsideReal(base, workdir)) {
     const msg =
       `Invalid workdir (outside MClistRuns).\n` +
@@ -140,7 +296,6 @@ ipcMain.handle("read-run-file", async (_e, { workdir, relPath, maxBytes = 2_000_
 
   const abs = path.resolve(workdir, relPath);
 
-  // segurança: arquivo precisa ficar dentro do workdir
   if (!safeInsideReal(workdir, abs)) {
     throw new Error(`Invalid file path.\nworkdir=${workdir}\nabs=${abs}`);
   }
@@ -233,8 +388,6 @@ ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
   console.log("Param:", paramPath);
   console.log("Workdir:", workdir);
 
-  // IMPORTANT: passamos só o nome do arquivo, porque cwd=workdir
-  // (isso evita caminhos longos e reduz chance de parser quebrar)
   const child = spawn(exePath, ["param.txt"], { cwd: workdir });
 
   running = { id, child };
@@ -274,23 +427,14 @@ ipcMain.handle("cancel-sim", async () => {
 });
 
 /* ================= REPORT (PDF) ================= */
-/**
- * payload esperado:
- * {
- *   logoDataUrl: "data:image/png;base64,...",
- *   paramText: "...",
- *   notes: "...",
- *   plotPngDataUrl: "data:image/png;base64,...",
- *   poTable: { headers: [...], rows: [[...], ...] } // opcional
- * }
- */
+
 ipcMain.handle("export-report-pdf", async (_event, payload) => {
   try {
     const {
       logoDataUrl = "",
       paramText = "",
       notes = "",
-      plotPngDataUrl = "",
+      poPlots = [],
       poTable = null,
     } = payload || {};
 
@@ -308,21 +452,37 @@ ipcMain.handle("export-report-pdf", async (_event, payload) => {
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;");
 
+    const plotsHtml = Array.isArray(poPlots)
+      ? poPlots
+          .filter((p) => p?.dataUrl)
+          .map(
+            (p) => `
+              <div class="section">
+                <div class="h2">${esc(p.title || "Plot")}</div>
+                <div class="plot"><img src="${p.dataUrl}" /></div>
+              </div>
+            `
+          )
+          .join("")
+      : "";
+
     const tableHtml = (() => {
       if (!poTable || !Array.isArray(poTable.rows) || !poTable.rows.length) return "";
 
-      const headers = Array.isArray(poTable.headers) && poTable.headers.length
-        ? poTable.headers
-        : poTable.rows[0].map((_, i) => `col${i}`);
+      const headers =
+        Array.isArray(poTable.headers) && poTable.headers.length
+          ? poTable.headers
+          : poTable.rows[0].map((_, i) => `col${i}`);
 
-      // limita linhas pra não explodir o PDF (ajuste se quiser)
-      const maxRows = 400;
+      const maxRows = 500;
       const rows = poTable.rows.slice(0, maxRows);
 
       return `
         <div class="section">
           <div class="h2">po.dat table</div>
-          <div class="hint">Showing ${rows.length}${poTable.rows.length > rows.length ? ` / ${poTable.rows.length}` : ""} rows</div>
+          <div class="hint">
+            Showing ${rows.length}${poTable.rows.length > rows.length ? ` / ${poTable.rows.length}` : ""} rows
+          </div>
           <div class="tableWrap">
             <table>
               <thead>
@@ -336,7 +496,8 @@ ipcMain.handle("export-report-pdf", async (_event, payload) => {
                     (r, i) => `
                       <tr class="${i % 2 === 0 ? "even" : "odd"}">
                         ${r.map((v) => `<td>${esc(v)}</td>`).join("")}
-                      </tr>`
+                      </tr>
+                    `
                   )
                   .join("")}
               </tbody>
@@ -368,7 +529,7 @@ ipcMain.handle("export-report-pdf", async (_event, payload) => {
             margin-bottom: 14px;
           }
           .logo{
-            height: 84px; /* LOGO MAIOR */
+            height: 84px;
             object-fit: contain;
           }
           .section{
@@ -452,13 +613,7 @@ ipcMain.handle("export-report-pdf", async (_event, payload) => {
           <pre>${esc(notes || "")}</pre>
         </div>
 
-        ${plotPngDataUrl ? `
-          <div class="section">
-            <div class="h2">po.dat plot</div>
-            <div class="plot"><img src="${plotPngDataUrl}" /></div>
-          </div>
-        ` : ""}
-
+        ${plotsHtml}
         ${tableHtml}
       </body>
       </html>

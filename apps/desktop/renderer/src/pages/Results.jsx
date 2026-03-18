@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import logoPng from "../assets/logo.png";
+import { useUi } from "../components/Shell.jsx";
 
 const api = window.mclist;
 
-/* ================== Helpers (PDF export) ================== */
+/* ================== helpers: assets / capture ================== */
 
 async function assetToDataUrl(assetUrl) {
   const res = await fetch(assetUrl);
@@ -16,7 +17,6 @@ async function assetToDataUrl(assetUrl) {
   });
 }
 
-// Captura SVG/Canvas do gráfico (da preview box) e transforma em PNG (dataURL)
 async function capturePlotPngFromDom(domEl) {
   const svg = domEl?.querySelector("svg");
   if (svg) {
@@ -49,36 +49,36 @@ async function capturePlotPngFromDom(domEl) {
   return "";
 }
 
-/* ================== Page ================== */
+/* ================== Results ================== */
 
 export default function Results() {
+  const plotRef = useRef(null);
+  const { t } = useUi();
   const nav = useNavigate();
   const loc = useLocation();
-  const data = loc.state || {};
+  const state = loc.state || {};
 
-  const { id, code, mode, workdir, paramPath, exePath, logPath } = data;
+  const { id, code, mode, workdir, paramPath, exePath, logPath } = state;
   const ok = Number(code) === 0;
 
   const [tab, setTab] = useState("plots"); // plots | files | notes
+
   const [files, setFiles] = useState([]);
   const [selected, setSelected] = useState("");
+
   const [fileText, setFileText] = useState("");
   const [truncated, setTruncated] = useState(false);
 
-  // Param text (para embutir no PDF)
+  // NEW: param.txt always loaded
   const [paramText, setParamText] = useState("");
 
-  // Notes persistidas por run
   const notesKey = useMemo(
     () => `mclist_notes_${id || workdir || "unknown"}`,
     [id, workdir]
   );
   const [notes, setNotes] = useState(() => localStorage.getItem(notesKey) || "");
 
-  // ref do preview do report (pra capturar PNG do gráfico)
-  const plotRef = useRef(null);
-
-  // load file list
+  /* ---------- load file list (and preselect po.dat) ---------- */
   useEffect(() => {
     if (!api || !workdir) return;
     (async () => {
@@ -87,7 +87,6 @@ export default function Results() {
         const list = r?.files || [];
         setFiles(list);
 
-        // pré-seleciona po.dat se existir
         const candidate =
           list.find((f) => f.toLowerCase() === "po.dat") ||
           list.find((f) => f.toLowerCase().endsWith("/po.dat")) ||
@@ -103,7 +102,7 @@ export default function Results() {
     })();
   }, [workdir]);
 
-  // load selected file content
+  /* ---------- load selected file content ---------- */
   useEffect(() => {
     if (!api || !workdir || !selected) return;
     (async () => {
@@ -119,12 +118,13 @@ export default function Results() {
     })();
   }, [workdir, selected]);
 
-  // load param.txt for PDF
+  /* ---------- load param.txt ALWAYS (for Parameters table + PDF) ---------- */
   useEffect(() => {
     if (!api || !workdir) return;
     (async () => {
       try {
-        const r = await api.readRunFile(workdir, "param.txt", 2_000_000);
+        // param.txt is inside workdir
+        const r = await api.readRunFile(workdir, "param.txt", 500_000);
         setParamText(r?.text || "");
       } catch (e) {
         console.error(e);
@@ -133,12 +133,12 @@ export default function Results() {
     })();
   }, [workdir]);
 
-  // persist notes
+  /* ---------- persist notes ---------- */
   useEffect(() => {
     localStorage.setItem(notesKey, notes);
   }, [notesKey, notes]);
 
-  // Parse table if possible
+  /* ---------- Parse selected file as table ---------- */
   const table = useMemo(() => {
     const t = parseTable(fileText);
     if (!t) return null;
@@ -146,6 +146,7 @@ export default function Results() {
     return t;
   }, [fileText]);
 
+  /* ---------- Po.dat curves (if table) ---------- */
   const curves = useMemo(() => {
     if (!table) return [];
     const xs = table.rows.map((r) => r[0]);
@@ -160,64 +161,239 @@ export default function Results() {
     return out;
   }, [table]);
 
+  /* ---------- NEW: parse param.txt into (key,value) rows ---------- */
+  const paramKV = useMemo(() => parseParamKV(paramText), [paramText]);
+
   const exportPDF = async () => {
-    try {
-      if (!api) {
-        alert("Export works only inside Electron.");
-        return;
-      }
-      if (!workdir) {
-        alert("Workdir not found for this run.");
-        return;
-      }
-
-      // 1) logo (dataURL)
-      const logoDataUrl = await assetToDataUrl(logoPng);
-
-      // 2) param.txt (texto)
-      let paramText = "";
-      try {
-        const rr = await api.readRunFile(workdir, "param.txt", 2_000_000);
-        paramText = rr?.text || "";
-      } catch {
-        paramText = "";
-      }
-
-      // 3) plot do preview (png)
-      const plotPngDataUrl = await capturePlotPngFromDom(plotRef.current);
-
-      // 4) tabela do po.dat (só se o arquivo atual for po.dat e parseou tabela)
-      let poTable = null;
-      if (selected?.toLowerCase().includes("po.dat") && table?.rows?.length) {
-        const headers = table.headers || ["T", "S", "varS", "E", "varE"];
-        // formata células pra PDF ficar bonito
-        const fmt = (v) => {
-          const n = Number(v);
-          if (!Number.isFinite(n)) return "";
-          const a = Math.abs(n);
-          if (a >= 1000 || (a > 0 && a < 0.001)) return n.toExponential(6);
-          return n.toFixed(8).replace(/0+$/g, "").replace(/\.$/g, "");
-        };
-        const rows = table.rows.map((r) => r.map(fmt));
-        poTable = { headers, rows };
-      }
-
-      const res = await api.exportReportPDF({
-        logoDataUrl,
-        paramText,
-        notes: notes || "",
-        plotPngDataUrl,
-        poTable, // pode ser null
-      });
-
-      if (res?.canceled) return;
-      alert(`Saved PDF:\n${res.filePath}`);
-    } catch (e) {
-      console.error(e);
-      alert(`Export report error:\n${String(e)}`);
+  try {
+    if (!api) {
+      alert(t("exportWorksElectron"));
+      return;
     }
-  };
+    if (!workdir) {
+      alert(t("workdirNotFound"));
+      return;
+    }
 
+    // 1) logo
+    const logoDataUrl = await assetToDataUrl(logoPng);
+
+    // 2) param.txt
+    let paramTextLocal = "";
+    try {
+      const rr = await api.readRunFile(workdir, "param.txt", 2_000_000);
+      paramTextLocal = rr?.text || "";
+    } catch {
+      paramTextLocal = "";
+    }
+
+    // 3) po.dat -> sempre usar ele no relatório
+    const poFile = files.find((f) => f.toLowerCase().includes("po.dat"));
+    if (!poFile) {
+      alert(t("poDatNotFound"));
+      return;
+    }
+
+    const poResp = await api.readRunFile(workdir, poFile, 2_000_000);
+    const poText = poResp?.text || "";
+    const poParsed = parseTable(poText);
+
+    if (!poParsed || !poParsed.rows?.length) {
+      alert(t("poDatParseError"));
+      return;
+    }
+
+    // 4) gerar tabela do po.dat
+    const poHeaders =
+      poParsed.headers && poParsed.headers.length
+        ? poParsed.headers
+        : Array.from({ length: poParsed.cols }, (_, i) => `col${i}`);
+
+    const fmtCell = (v) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "";
+      const a = Math.abs(n);
+      if (a >= 1000 || (a > 0 && a < 0.001)) return n.toExponential(6);
+      return n.toFixed(8).replace(/0+$/g, "").replace(/\.$/g, "");
+    };
+
+    const poTable = {
+      headers: poHeaders,
+      rows: poParsed.rows.map((r) => r.map(fmtCell)),
+    };
+
+    // 5) gerar duas imagens separadas do po.dat
+    const poCols = pickPoColumns(poParsed);
+    if (!poCols) {
+      alert(t("poDatColumnsError"));
+      return;
+    }
+
+    const poRows = poParsed.rows
+      .map((r) => ({
+        T: r[poCols.t],
+        S: r[poCols.s],
+        varS: r[poCols.varS],
+        E: r[poCols.e],
+        varE: r[poCols.varE],
+      }))
+      .filter((p) => [p.T, p.S, p.E].every((v) => Number.isFinite(v)))
+      .sort((a, b) => a.T - b.T);
+
+    const seriesS = poRows.map((p) => ({
+      x: p.T,
+      y: p.S,
+      lo: Number.isFinite(p.varS) ? p.S - Math.sqrt(Math.max(0, p.varS)) : null,
+      hi: Number.isFinite(p.varS) ? p.S + Math.sqrt(Math.max(0, p.varS)) : null,
+    }));
+
+    const seriesE = poRows.map((p) => ({
+      x: p.T,
+      y: p.E,
+      lo: Number.isFinite(p.varE) ? p.E - Math.sqrt(Math.max(0, p.varE)) : null,
+      hi: Number.isFinite(p.varE) ? p.E + Math.sqrt(Math.max(0, p.varE)) : null,
+    }));
+
+    // container temporário para renderizar os dois gráficos
+    const host = document.createElement("div");
+    host.style.position = "fixed";
+    host.style.left = "-99999px";
+    host.style.top = "0";
+    host.style.width = "1200px";
+    host.style.background = "#fff";
+    host.style.padding = "20px";
+    document.body.appendChild(host);
+
+    // helper para renderizar SVG de string
+    const renderBandChartSvg = ({ title, xLabel, yLabel, series, accent }) => {
+      const W = 980;
+      const H = 300;
+      const padL = 54;
+      const padR = 20;
+      const padT = 34;
+      const padB = 40;
+
+      const xs = series.map((p) => p.x).filter(Number.isFinite);
+      const ys = series.map((p) => p.y).filter(Number.isFinite);
+      const los = series.map((p) => p.lo).filter(Number.isFinite);
+      const his = series.map((p) => p.hi).filter(Number.isFinite);
+
+      const xmin = Math.min(...xs);
+      const xmax = Math.max(...xs);
+      const yMin = Math.min(...ys, ...(los.length ? los : ys));
+      const yMax = Math.max(...ys, ...(his.length ? his : ys));
+
+      const sx = (x) => padL + ((x - xmin) / (xmax - xmin || 1)) * (W - padL - padR);
+      const sy = (y) => H - padB - ((y - yMin) / (yMax - yMin || 1)) * (H - padT - padB);
+
+      const grid = 5;
+
+      const lineD = series
+        .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+        .map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`)
+        .join(" ");
+
+      const bandPtsHi = series
+        .filter((p) => Number.isFinite(p.hi))
+        .map((p) => [sx(p.x), sy(p.hi)]);
+      const bandPtsLo = series
+        .filter((p) => Number.isFinite(p.lo))
+        .map((p) => [sx(p.x), sy(p.lo)])
+        .reverse();
+
+      const bandD =
+        bandPtsHi.length && bandPtsLo.length
+          ? `M ${bandPtsHi[0][0].toFixed(2)} ${bandPtsHi[0][1].toFixed(2)} ` +
+            bandPtsHi.slice(1).map(([x, y]) => `L ${x.toFixed(2)} ${y.toFixed(2)}`).join(" ") +
+            " " +
+            bandPtsLo.map(([x, y]) => `L ${x.toFixed(2)} ${y.toFixed(2)}`).join(" ") +
+            " Z"
+          : "";
+
+      return `
+        <div style="border:1px solid rgba(29,29,29,0.10); border-radius:16px; padding:12px; background:rgba(255,255,255,0.65); margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding-bottom:8px;">
+            <div style="font-weight:950; letter-spacing:-0.2px;">${title}</div>
+            <div style="font-size:12px; color:#666; font-weight:750;">
+              x ∈ [${fmt(xmin)}, ${fmt(xmax)}] • y ∈ [${fmt(yMin)}, ${fmt(yMax)}]
+            </div>
+          </div>
+          <svg viewBox="0 0 ${W} ${H}" style="width:100%; height:auto;">
+            <rect x="0" y="0" width="${W}" height="${H}" rx="14" fill="rgba(0,0,0,0.02)" />
+            ${Array.from({ length: grid + 1 })
+              .map((_, i) => {
+                const t = i / grid;
+                const y = padT + t * (H - padT - padB);
+                const x = padL + t * (W - padL - padR);
+                return `
+                  <g>
+                    <line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(0,0,0,0.08)" />
+                    <line x1="${x}" y1="${padT}" x2="${x}" y2="${H - padB}" stroke="rgba(0,0,0,0.08)" />
+                  </g>
+                `;
+              })
+              .join("")}
+            <line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="rgba(0,0,0,0.25)" />
+            <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}" stroke="rgba(0,0,0,0.25)" />
+            <text x="${padL}" y="18" font-size="12" fill="rgba(29,29,29,0.70)" font-weight="800">${yLabel}</text>
+            <text x="${W - padR - 18}" y="${H - 10}" font-size="12" fill="rgba(29,29,29,0.70)" font-weight="800">${xLabel}</text>
+            ${bandD ? `<path d="${bandD}" fill="${accent}" opacity="0.14" stroke="none" />` : ""}
+            <path d="${lineD}" fill="none" stroke="${accent}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" />
+          </svg>
+        </div>
+      `;
+    };
+
+    host.innerHTML = `
+      ${renderBandChartSvg({
+        title: t("orderParameterVsTemperature"),
+        xLabel: "T",
+        yLabel: "S",
+        series: seriesS,
+        accent: "#E63946",
+      })}
+      ${renderBandChartSvg({
+        title: t("energyVsTemperature"),
+        xLabel: "T",
+        yLabel: "E",
+        series: seriesE,
+        accent: "rgba(29,29,29,0.75)",
+      })}
+    `;
+
+    const chartNodes = Array.from(host.querySelectorAll("svg"));
+    const poPlots = [];
+
+    for (let i = 0; i < chartNodes.length; i++) {
+      const svg = chartNodes[i];
+      const wrapper = document.createElement("div");
+      wrapper.appendChild(svg.cloneNode(true));
+      const dataUrl = await capturePlotPngFromDom(wrapper);
+
+      poPlots.push({
+        title: i === 0 ? "po.dat — S(T)" : "po.dat — E(T)",
+        dataUrl,
+      });
+    }
+
+    document.body.removeChild(host);
+
+    // 6) exportar
+    const res = await api.exportReportPDF({
+      logoDataUrl,
+      paramText: paramTextLocal,
+      notes: notes || "",
+      poPlots,
+      poTable,
+    });
+
+    if (res?.canceled) return;
+    alert(`${t("savedAt", { path: res.filePath })}`);
+  } catch (e) {
+    console.error(e);
+    aalert(t("exportError", { error: String(e) }));
+  }
+};
   return (
     <div style={s.page}>
       <div style={s.top}>
@@ -225,25 +401,25 @@ export default function Results() {
           <div style={s.dot} />
           <div>
             <div style={s.brandTitle}>MClist</div>
-            <div style={s.brandSub}>Monte Carlo Simulator</div>
+            <div style={s.brandSub}>{t("appSubtitle")}</div>
           </div>
         </div>
 
         <div style={s.topActions}>
           <button style={s.btn} className="ui-hover" onClick={() => nav("/setup")}>
-            Back to Setup
+            {t("backToSetup")}
           </button>
           <button style={s.btn} className="ui-hover" onClick={() => nav("/")}>
-            Home
+            {t("home")}
           </button>
           <button
             style={s.btnPrimary}
             className="ui-hover"
             onClick={() => api?.openRunFolder?.(workdir)}
             disabled={!api || !workdir}
-            title="Open the run folder"
+            title={t("openRunFolder")}
           >
-            Open Folder
+            {t("openFolder")}
           </button>
         </div>
       </div>
@@ -251,36 +427,37 @@ export default function Results() {
       <div style={s.headerCard}>
         <div style={{ display: "grid", gap: 6 }}>
           <div style={s.h1}>
-            Results —{" "}
+            {t("results")} —{" "}
             <span style={{ color: ok ? "var(--ok)" : "var(--bad)" }}>
-              {ok ? "Success" : "Failed"}
+              {ok ? t("success") : t("failed")}
             </span>
           </div>
           <div style={s.meta}>
-            Mode: <b>{mode}</b> • Exit code: <b>{code}</b>
+            {t("exitCode")}: <b>{code}</b>
           </div>
-          <div style={s.metaSmall}>Workdir: {workdir}</div>
-          <div style={s.metaSmall}>Param: {paramPath}</div>
-          {logPath ? <div style={s.metaSmall}>Log: {logPath}</div> : null}
-          {exePath ? <div style={s.metaSmall}>Exe: {exePath}</div> : null}
+          <div style={s.metaSmall}>{t("workdir")}: {workdir}</div>
+          <div style={s.metaSmall}>{t("param")}: {paramPath}</div>
+          {logPath ? <div style={s.metaSmall}>{t("log")}: {logPath}</div> : null}
+          {exePath ? <div style={s.metaSmall}>{t("exe")}: {exePath}</div> : null}
         </div>
 
         <div style={s.tabs}>
-          <Tab label="Plots" active={tab === "plots"} onClick={() => setTab("plots")} />
-          <Tab label="Files" active={tab === "files"} onClick={() => setTab("files")} />
+          <Tab label={t("plots")} active={tab === "plots"} onClick={() => setTab("plots")} />
+          <Tab label={t("files")} active={tab === "files"} onClick={() => setTab("files")} />
           <Tab
-            label="Notes & Report"
+            label={t("notesReport")}
             active={tab === "notes"}
             onClick={() => setTab("notes")}
           />
         </div>
       </div>
 
+      {/* ================== PLOTS TAB ================== */}
       {tab === "plots" ? (
         <div style={s.grid2}>
           <div style={s.panel}>
-            <div style={s.panelTitle}>Data source</div>
-            <div style={s.panelSub}>Select an output file (.dat/.txt/.csv) to plot.</div>
+            <div style={s.panelTitle}>{t("dataSource")}</div>
+            <div style={s.panelSub}>{t("dataSourceSub")}</div>
 
             <select
               style={s.select}
@@ -297,24 +474,35 @@ export default function Results() {
 
             {!isNumericTextFile(selected) ? (
               <div style={s.warn}>
-                This file doesn’t look like numeric table data. Choose a{" "}
-                <b>.dat / .csv / .txt</b> file.
+                {t("numericFileWarn")}
               </div>
             ) : !table ? (
               <div style={s.warn}>
-                Couldn’t parse numeric table. Check if file has numbers separated by
-                spaces/tabs/commas.
+                {t("parseTableWarn")}
               </div>
             ) : (
               <div style={s.okBox}>
-                Parsed <b>{table.rows.length}</b> rows • <b>{table.cols}</b> columns.
+                {t("parsedTable", { rows: table.rows.length, cols: table.cols })}
               </div>
             )}
+
+            {/* NEW: parameters always visible here too */}
+            <div style={{ marginTop: 8 }}>
+              <div style={s.panelTitle}>{t("parametersParamTxt")}</div>
+              <div style={s.panelSub}>{t("parsedParamsSub")}</div>
+              {paramKV.length ? (
+                <KVTable rows={paramKV} />
+              ) : (
+                <div style={s.warn}>{t("parseParamWarn")}</div>
+              )}
+            </div>
           </div>
 
           <div style={s.panel}>
-            <div style={s.panelTitle}>Plot</div>
-            <div style={s.panelSub}>Auto-plot: X = column 0, Y = columns 1..N.</div>
+            <div style={s.panelTitle}>{t("plot")}</div>
+            <div style={s.panelSub}>
+              {t("plotSub")}
+            </div>
 
             <div style={s.chartBox}>
               {table && isPoDat(selected, table) ? (
@@ -322,32 +510,33 @@ export default function Results() {
               ) : curves.length ? (
                 <LineChart curves={curves} />
               ) : (
-                <div style={s.chartEmpty}>No plottable numeric data selected.</div>
+                <div style={s.chartEmpty}>{t("noPlotData")}</div>
               )}
             </div>
           </div>
 
           <div style={s.panelFull}>
-            <div style={s.panelTitle}>Preview</div>
+            <div style={s.panelTitle}>{t("preview")}</div>
             <div style={s.panelSub}>
-              {table ? "Table view (first 200 rows)." : "Text view."}
-              {truncated ? " (truncated)" : ""}
+              {table ? t("tableViewFirstRows") : t("textView")}
+              {truncated ? ` ${t("truncated")}` : ""}
             </div>
 
             {table ? (
               <DataTable table={table} maxRows={200} />
             ) : (
-              <pre style={s.pre}>{fileText || "(empty)"}</pre>
+              <pre style={s.pre}>{fileText || t("empty")}</pre>
             )}
           </div>
         </div>
       ) : null}
 
+      {/* ================== FILES TAB ================== */}
       {tab === "files" ? (
         <div style={s.grid2}>
           <div style={s.panel}>
-            <div style={s.panelTitle}>Files</div>
-            <div style={s.panelSub}>Outputs created by the simulation in this run folder.</div>
+            <div style={s.panelTitle}>{t("files")}</div>
+            <div style={s.panelSub}>{t("filesSub")}</div>
 
             <div style={s.fileList}>
               {files.map((f) => (
@@ -368,33 +557,34 @@ export default function Results() {
           </div>
 
           <div style={s.panel}>
-            <div style={s.panelTitle}>Content</div>
+            <div style={s.panelTitle}>{t("content")}</div>
             <div style={s.panelSub}>
-              {selected ? selected : "Select a file"} {truncated ? " (truncated)" : ""}
+              {selected ? selected : "Select a file"} {truncated ? ` ${t("truncated")}` : ""}
             </div>
 
             {table ? (
               <DataTable table={table} maxRows={400} />
             ) : (
-              <pre style={s.preTall}>{fileText || "(empty)"}</pre>
+              <pre style={s.preTall}>{fileText || t("empty")}</pre>
             )}
           </div>
         </div>
       ) : null}
 
+      {/* ================== NOTES TAB ================== */}
       {tab === "notes" ? (
         <div style={s.grid2}>
           <div style={s.panel}>
-            <div style={s.panelTitle}>Notes</div>
+            <div style={s.panelTitle}>{t("notes")}</div>
             <div style={s.panelSub}>
-              Write anything about this run. Saved locally (per run id/workdir).
+              {t("notesSub")}
             </div>
 
             <textarea
               style={s.textarea}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Describe what you observed, hypotheses, settings, etc."
+              placeholder={t("notesPlaceholder")}
             />
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
@@ -402,28 +592,25 @@ export default function Results() {
                 className="ui-hover"
                 style={s.btnGhost}
                 onClick={() => setNotes("")}
-                title="Clear notes (only this run)"
+                title={t("clearNotesTitle")}
               >
-                Clear
+                {t("clear")}
               </button>
 
               <button
                 className="ui-hover"
                 style={s.btnPrimary}
                 onClick={exportPDF}
-                disabled={!api}
-                title="Generate a PDF report with logo + params + plot + notes"
+                title={t("generatePdfTitle")}
               >
-                Generate PDF
+                {t("generatePdf")}
               </button>
             </div>
           </div>
 
           <div style={s.panel}>
-            <div style={s.panelTitle}>Report preview</div>
-            <div style={s.panelSub}>
-              This preview image will be embedded in the PDF report.
-            </div>
+            <div style={s.panelTitle}>{t("reportPreview")}</div>
+            <div style={s.panelSub}>{t("reportPreviewSub")}</div>
 
             <div ref={plotRef} style={s.reportPreviewBox}>
               {table && isPoDat(selected, table) ? (
@@ -431,21 +618,27 @@ export default function Results() {
               ) : curves?.length ? (
                 <LineChart curves={curves} />
               ) : (
-                <div style={s.muted2}>No plot available to preview.</div>
+                <div style={s.muted2}>{t("noPlotPreview")}</div>
               )}
             </div>
 
             <div style={{ marginTop: 10 }}>
               <div style={s.muted2}>
-                Tip: select <b>po.dat</b> in Files/Plots before exporting to capture the correct
-                chart.
+                {t("reportTip")}
               </div>
+            </div>
+
+            {/* NEW: show parameters here too */}
+            <div style={{ marginTop: 12 }}>
+              <div style={s.panelTitle}>{t("parameters")}</div>
+              <div style={s.panelSub}>{t("parametersPdfSub")}</div>
+              {paramKV.length ? <KVTable rows={paramKV} /> : <div style={s.warn}>{t("noParameters")}</div>}
             </div>
           </div>
         </div>
       ) : null}
 
-      {/* Hover CSS (inline, pra não depender de achar CSS em outro arquivo) */}
+      {/* Hover CSS */}
       <style>{`
         .ui-hover:hover{
           transform: translateY(-1px);
@@ -479,19 +672,53 @@ function Tab({ label, active, onClick }) {
   );
 }
 
-/* ================== Table ================== */
+/** NEW: simple key/value table for param.txt (no sorting) */
+function KVTable({ rows }) {
+  const { t } = useUi();
+  return (
+    <div style={s.tableShell}>
+      <div style={{ ...s.tableToolbar, justifyContent: "flex-start" }}>
+        <div style={s.tablePill}>
+          {t("paramsCount")}: <b>{rows.length}</b>
+        </div>
+      </div>
+
+      <div style={s.tableWrap2}>
+        <table style={s.table2}>
+          <thead>
+            <tr>
+              <th style={{ ...s.th2, ...s.thStickyLeft }}>{t("key")}</th>
+              <th style={s.th2}>{t("value")}</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} style={i % 2 === 0 ? s.trEven2 : s.trOdd2}>
+                <td style={{ ...s.td2, ...s.tdStickyLeft }}>{r.key}</td>
+                <td style={s.td2}>{r.value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ================== DataTable (UPDATED: NO SORT) ================== */
 
 function DataTable({ table, maxRows = 200 }) {
+  const { t } = useUi();
   const headers =
     table.headers || Array.from({ length: table.cols }, (_, i) => `col${i}`);
 
   const [q, setQ] = useState("");
-  const [sort, setSort] = useState({ col: 0, dir: "asc" }); // dir: asc|desc
   const [pageSize, setPageSize] = useState(100);
   const [page, setPage] = useState(0);
 
   const filtered = useMemo(() => {
-    const base = table.rows.slice(0, Math.min(table.rows.length, 50_000)); // safety
+    const base = table.rows.slice(0, Math.min(table.rows.length, 50_000));
     if (!q.trim()) return base;
 
     const needle = q.trim().toLowerCase();
@@ -500,54 +727,30 @@ function DataTable({ table, maxRows = 200 }) {
     );
   }, [table.rows, q]);
 
-  const sorted = useMemo(() => {
-    const { col, dir } = sort;
-    const arr = filtered.slice();
-    arr.sort((a, b) => {
-      const av = a[col];
-      const bv = b[col];
-      const aN = Number.isFinite(av);
-      const bN = Number.isFinite(bv);
-
-      if (!aN && !bN) return 0;
-      if (!aN) return 1;
-      if (!bN) return -1;
-
-      return dir === "asc" ? av - bv : bv - av;
-    });
-    return arr;
-  }, [filtered, sort]);
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  // IMPORTANT: NO SORT — preserve original file order
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages - 1);
 
   const pageRows = useMemo(() => {
     const start = safePage * pageSize;
-    return sorted.slice(start, start + pageSize);
-  }, [sorted, safePage, pageSize]);
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, safePage, pageSize]);
 
-  useEffect(() => setPage(0), [q, pageSize, sort.col, sort.dir]);
-
-  const toggleSort = (col) => {
-    setSort((prev) => {
-      if (prev.col !== col) return { col, dir: "asc" };
-      return { col, dir: prev.dir === "asc" ? "desc" : "asc" };
-    });
-  };
+  useEffect(() => setPage(0), [q, pageSize]);
 
   const copyCSV = async () => {
     const csv = toCSV(headers, pageRows);
     await navigator.clipboard.writeText(csv);
-    alert("CSV copied!");
+    alert(t("csvCopied"));
   };
 
   const downloadCSV = () => {
-    const csv = toCSV(headers, sorted);
+    const csv = toCSV(headers, filtered);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "table.csv";
+    a.download = t("tableCsvName");
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -559,13 +762,13 @@ function DataTable({ table, maxRows = 200 }) {
       <div style={s.tableToolbar}>
         <div style={s.tableToolbarLeft}>
           <div style={s.tablePill}>
-            Rows: <b>{sorted.length}</b>
+            {t("rows")}: <b>{filtered.length}</b>
           </div>
 
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search… (T, S, E, etc.)"
+            placeholder={t("search")}
             style={s.tableSearch}
           />
 
@@ -574,18 +777,18 @@ function DataTable({ table, maxRows = 200 }) {
             onChange={(e) => setPageSize(Number(e.target.value))}
             style={s.tableSelect}
           >
-            <option value={50}>50 / page</option>
-            <option value={100}>100 / page</option>
-            <option value={200}>200 / page</option>
+            <option value={50}>{t("perPage50")}</option>
+            <option value={100}>{t("perPage100")}</option>
+            <option value={200}>{t("perPage200")}</option>
           </select>
         </div>
 
         <div style={s.tableToolbarRight}>
           <button style={s.smallBtn} className="ui-hover" onClick={copyCSV}>
-            Copy CSV
+            {t("copyCsv")}
           </button>
           <button style={s.smallBtn} className="ui-hover" onClick={downloadCSV}>
-            Download CSV
+            {t("downloadCsv")}
           </button>
         </div>
       </div>
@@ -594,24 +797,19 @@ function DataTable({ table, maxRows = 200 }) {
         <table style={s.table2}>
           <thead>
             <tr>
-              {headers.map((h, i) => {
-                const active = sort.col === i;
-                const arrow = !active ? "" : sort.dir === "asc" ? " ▲" : " ▼";
-                return (
-                  <th
-                    key={i}
-                    style={{
-                      ...s.th2,
-                      ...(i === 0 ? s.thStickyLeft : null),
-                      ...(active ? s.thActive : null),
-                    }}
-                    onClick={() => toggleSort(i)}
-                    title="Click to sort"
-                  >
-                    {h}{arrow}
-                  </th>
-                );
-              })}
+              {headers.map((h, i) => (
+                <th
+                  key={i}
+                  style={{
+                    ...s.th2,
+                    ...(i === 0 ? s.thStickyLeft : null),
+                    cursor: "default", // no sorting
+                  }}
+                  title=""
+                >
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
 
@@ -692,7 +890,31 @@ function tagFor(name) {
   return "file";
 }
 
-/* ================== parsing ================== */
+/* ================== param.txt parsing ================== */
+
+function parseParamKV(text) {
+  const lines = String(text || "").replace(/\r/g, "").split("\n");
+  const out = [];
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith("#")) continue;
+
+    // Accept: "key  value" or "key value"
+    const parts = line.split(/\s+/).filter(Boolean);
+    if (parts.length < 2) continue;
+
+    const key = parts[0];
+    const value = parts.slice(1).join(" ");
+
+    out.push({ key, value });
+  }
+
+  return out;
+}
+
+/* ================== parsing numeric tables ================== */
 
 function normName(s) {
   return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -708,8 +930,8 @@ function isPoDat(selected, table) {
   const hasE = hs.includes("e");
   const hasVarS = hs.includes("vars") || hs.includes("varse") || hs.includes("varsigma");
   const hasVarE = hs.includes("vare") || hs.includes("varee");
-
   const fallback5 = !table.headers && table.cols >= 5;
+
   return (hasT && hasS && hasE && (hasVarS || hasVarE)) || fallback5;
 }
 
@@ -751,7 +973,10 @@ function parseTable(text) {
     const hasDigit = /[0-9]/.test(line);
 
     if (hasLetter && !hasDigit) {
-      headers = line.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
+      headers = line
+        .split(/[,\s]+/)
+        .map((x) => x.trim())
+        .filter(Boolean);
       startIdx = i + 1;
     }
     break;
@@ -800,7 +1025,7 @@ function parseTable(text) {
   return { headers, rows: norm, cols };
 }
 
-/* ================== Charts (SVG) ================== */
+/* ================== charts (SVG) ================== */
 
 function LineChart({ curves }) {
   const W = 980;
@@ -891,8 +1116,9 @@ function LineChart({ curves }) {
 }
 
 function PoDatChart({ table }) {
+  const { t } = useUi();
   const cols = pickPoColumns(table);
-  if (!cols) return <div style={s.chartEmpty}>No data.</div>;
+  if (!cols) return <div style={s.chartEmpty}>{t("noPlotData")}</div>;
 
   const rows = table.rows
     .map((r) => ({
@@ -904,7 +1130,7 @@ function PoDatChart({ table }) {
     }))
     .filter((p) => [p.T, p.S, p.E].every((v) => Number.isFinite(v)));
 
-  if (!rows.length) return <div style={s.chartEmpty}>Couldn’t parse po.dat columns.</div>;
+  if (!rows.length) return <div style={s.chartEmpty}>{t("poDatColumnsError")}</div>;
 
   rows.sort((a, b) => a.T - b.T);
 
@@ -926,13 +1152,26 @@ function PoDatChart({ table }) {
     <div style={{ display: "grid", gap: 12 }}>
       <div style={s.poTitleRow}>
         <div>
-          <div style={s.poTitle}>po.dat — Thermodynamics</div>
+          <div style={s.poTitle}>po.dat — {t("results")}</div>
           <div style={s.poSub}>S(T) and E(T) with uncertainty bands (± √var)</div>
         </div>
       </div>
 
-      <BandChart title="Order parameter S vs Temperature" xLabel="T" yLabel="S" series={seriesS} accent="var(--red)" />
-      <BandChart title="Energy E vs Temperature" xLabel="T" yLabel="E" series={seriesE} accent="rgba(29,29,29,0.75)" />
+      <BandChart
+        title={t("orderParameterVsTemperature")}
+        xLabel="T"
+        yLabel="S"
+        series={seriesS}
+        accent="var(--red)"
+      />
+
+      <BandChart
+        title={t("energyVsTemperature")}
+        xLabel="T"
+        yLabel="E"
+        series={seriesE}
+        accent="rgba(29,29,29,0.75)"
+      />
     </div>
   );
 }
@@ -967,7 +1206,10 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
     .join(" ");
 
   const bandPtsHi = series.filter((p) => Number.isFinite(p.hi)).map((p) => [sx(p.x), sy(p.hi)]);
-  const bandPtsLo = series.filter((p) => Number.isFinite(p.lo)).map((p) => [sx(p.x), sy(p.lo)]).reverse();
+  const bandPtsLo = series
+    .filter((p) => Number.isFinite(p.lo))
+    .map((p) => [sx(p.x), sy(p.lo)])
+    .reverse();
 
   const bandD =
     bandPtsHi.length && bandPtsLo.length
@@ -1008,7 +1250,13 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
         <text x={padL} y={18} fontSize="12" fill="rgba(29,29,29,0.70)" fontWeight="800">
           {yLabel}
         </text>
-        <text x={W - padR - 18} y={H - 10} fontSize="12" fill="rgba(29,29,29,0.70)" fontWeight="800">
+        <text
+          x={W - padR - 18}
+          y={H - 10}
+          fontSize="12"
+          fill="rgba(29,29,29,0.70)"
+          fontWeight="800"
+        >
           {xLabel}
         </text>
 
@@ -1069,17 +1317,6 @@ const s = {
     transition: "transform 140ms ease, box-shadow 140ms ease",
   },
 
-  btnGhost: {
-    border: "1px solid var(--border)",
-    background: "rgba(245,247,248,0.70)",
-    color: "var(--black)",
-    borderRadius: 14,
-    padding: "10px 12px",
-    cursor: "pointer",
-    fontWeight: 900,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
-  },
-
   btnPrimary: {
     border: "1px solid rgba(230,57,70,0.30)",
     background: "linear-gradient(180deg, rgba(230,57,70,1), rgba(190,30,44,1))",
@@ -1090,6 +1327,17 @@ const s = {
     fontWeight: 950,
     transition: "transform 140ms ease, box-shadow 140ms ease",
     boxShadow: "0 14px 30px rgba(230,57,70,0.20)",
+  },
+
+  btnGhost: {
+    border: "1px solid var(--border)",
+    background: "rgba(245,247,248,0.70)",
+    color: "var(--black)",
+    borderRadius: 14,
+    padding: "10px 12px",
+    cursor: "pointer",
+    fontWeight: 900,
+    transition: "transform 140ms ease, box-shadow 140ms ease",
   },
 
   headerCard: {
@@ -1262,17 +1510,10 @@ const s = {
     lineHeight: 1.5,
   },
 
-  reportPreviewBox: {
-    marginTop: 10,
-    border: "1px solid rgba(29,29,29,0.10)",
-    borderRadius: 14,
-    padding: 10,
-    background: "rgba(255,255,255,0.70)",
-  },
+  // theme helpers
+  ok: "#1ea046",
+  bad: "#E63946",
 
-  muted2: { color: "var(--muted)", fontWeight: 800, fontSize: 12 },
-
-  /* TABLE */
   tableShell: {
     border: "1px solid rgba(29,29,29,0.10)",
     background: "rgba(245,247,248,0.55)",
@@ -1330,6 +1571,16 @@ const s = {
     overflow: "auto",
   },
 
+  reportPreviewBox: {
+    marginTop: 10,
+    border: "1px solid rgba(29,29,29,0.10)",
+    borderRadius: 14,
+    padding: 10,
+    background: "rgba(255,255,255,0.70)",
+  },
+
+  muted2: { color: "var(--muted)", fontWeight: 800, fontSize: 12 },
+
   table2: {
     width: "100%",
     borderCollapse: "separate",
@@ -1348,14 +1599,8 @@ const s = {
     padding: "10px 10px",
     textAlign: "left",
     fontWeight: 950,
-    cursor: "pointer",
     userSelect: "none",
     whiteSpace: "nowrap",
-  },
-
-  thActive: {
-    color: "var(--red)",
-    borderBottom: "2px solid rgba(230,57,70,0.55)",
   },
 
   td2: {
@@ -1393,17 +1638,6 @@ const s = {
     backdropFilter: "blur(6px)",
   },
 
-  smallBtn: {
-    border: "1px solid rgba(29,29,29,0.12)",
-    background: "rgba(255,255,255,0.70)",
-    borderRadius: 12,
-    padding: "8px 10px",
-    cursor: "pointer",
-    fontWeight: 850,
-    fontSize: 12,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
-  },
-
   poTitleRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-end" },
   poTitle: { fontWeight: 950, letterSpacing: -0.2 },
   poSub: { fontSize: 12, color: "var(--muted)", fontWeight: 750, marginTop: 2 },
@@ -1414,7 +1648,25 @@ const s = {
     padding: 12,
     background: "rgba(255,255,255,0.65)",
   },
-  bandHeader: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, paddingBottom: 8 },
+  bandHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    gap: 12,
+    paddingBottom: 8,
+  },
   bandTitle: { fontWeight: 950, letterSpacing: -0.2 },
   bandMeta: { fontSize: 12, color: "var(--muted)", fontWeight: 750 },
+
+  smallBtn: {
+    border: "1px solid var(--border)",
+    background: "rgba(245,247,248,0.85)",
+    color: "var(--black)",
+    borderRadius: 12,
+    padding: "8px 10px",
+    cursor: "pointer",
+    fontWeight: 900,
+    fontSize: 12,
+    transition: "transform 140ms ease, box-shadow 140ms ease",
+  },
 };

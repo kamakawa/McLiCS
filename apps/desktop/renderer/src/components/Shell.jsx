@@ -1,5 +1,7 @@
-import { useEffect, useState, createContext, useContext } from "react";
+import { useEffect, useMemo, useState, createContext, useContext } from "react";
 import { useLocation } from "react-router-dom";
+import icon from "../assets/icon.png";
+import { LANG_OPTIONS, normalizeLang, translate } from "../i18n.js";
 
 const UiContext = createContext(null);
 
@@ -9,10 +11,10 @@ export function useUi() {
 
 export default function Shell({ children }) {
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
-  const [lang, setLang] = useState(localStorage.getItem("lang") || "en");
+  const [lang, setLang] = useState(() => normalizeLang(localStorage.getItem("lang") || "en"));
 
   const loc = useLocation();
-  const hideHeader = loc.pathname === "/"; // Home = Welcome screen
+  const hideHeader = loc.pathname === "/";
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -20,19 +22,36 @@ export default function Shell({ children }) {
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem("lang", lang);
+    const normalized = normalizeLang(lang);
+    if (normalized !== lang) {
+      setLang(normalized);
+      return;
+    }
+    localStorage.setItem("lang", normalized);
   }, [lang]);
 
+  const ui = useMemo(
+    () => ({
+      theme,
+      setTheme,
+      lang,
+      setLang,
+      languages: LANG_OPTIONS,
+      t: (key, vars) => translate(lang, key, vars),
+    }),
+    [theme, lang]
+  );
+
   return (
-    <UiContext.Provider value={{ theme, setTheme, lang, setLang }}>
+    <UiContext.Provider value={ui}>
       <div style={s.shell}>
         {!hideHeader && (
           <header style={s.top}>
             <div style={s.brand}>
-              <span style={s.dot} />
+              <img src={icon} alt="MClist" style={s.brandIcon} />
               <div>
                 <div style={s.title}>MClist</div>
-                <div style={s.sub}>Monte Carlo Simulator</div>
+                <div style={s.sub}>{ui.t("appSubtitle")}</div>
               </div>
             </div>
 
@@ -40,17 +59,17 @@ export default function Shell({ children }) {
               <button
                 style={s.iconBtn}
                 onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
-                title="Toggle theme"
+                title={ui.t("toggleTheme")}
               >
                 {theme === "light" ? "☀" : "🌙"}
               </button>
 
-              <select value={lang} onChange={(e) => setLang(e.target.value)} style={s.select} title="Language">
-                <option value="en">EN</option>
-                <option value="pt-BR">pt-BR</option>
-                <option value="es">ES</option>
-                <option value="ja">日本語</option>
-                <option value="zh">中文</option>
+              <select value={lang} onChange={(e) => setLang(e.target.value)} style={s.select} title={ui.t("language")}>
+                {LANG_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
           </header>
@@ -78,7 +97,7 @@ const s = {
   },
 
   brand: { display: "flex", alignItems: "center", gap: 12 },
-  dot: { width: 14, height: 14, borderRadius: 999, background: "var(--red)" },
+  brandIcon: { width: 48, height: 48, borderRadius: 12, objectFit: "cover" },
 
   title: { fontWeight: 900 },
   sub: { fontSize: 12, color: "var(--muted)" },
