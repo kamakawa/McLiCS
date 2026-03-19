@@ -69,8 +69,13 @@ export default function Results() {
   const [fileText, setFileText] = useState("");
   const [truncated, setTruncated] = useState(false);
 
-  // NEW: param.txt always loaded
+  // param.txt always loaded
   const [paramText, setParamText] = useState("");
+
+  // po.dat always loaded for plots tab
+  const [poFileName, setPoFileName] = useState("");
+  const [poText, setPoText] = useState("");
+  const [poTruncated, setPoTruncated] = useState(false);
 
   const notesKey = useMemo(
     () => `mclist_notes_${id || workdir || "unknown"}`,
@@ -78,7 +83,7 @@ export default function Results() {
   );
   const [notes, setNotes] = useState(() => localStorage.getItem(notesKey) || "");
 
-  /* ---------- load file list (and preselect po.dat) ---------- */
+  /* ---------- load file list (files tab) + detect po.dat ---------- */
   useEffect(() => {
     if (!api || !workdir) return;
     (async () => {
@@ -87,22 +92,29 @@ export default function Results() {
         const list = r?.files || [];
         setFiles(list);
 
-        const candidate =
+        const poCandidate =
           list.find((f) => f.toLowerCase() === "po.dat") ||
           list.find((f) => f.toLowerCase().endsWith("/po.dat")) ||
           list.find((f) => f.toLowerCase().includes("po.dat")) ||
+          "";
+
+        setPoFileName(poCandidate);
+
+        const fileCandidate =
+          poCandidate ||
           list.find((f) => isNumericTextFile(f)) ||
           list.find((f) => f.toLowerCase().includes("log")) ||
           list[0] ||
           "";
-        setSelected(candidate);
+
+        setSelected(fileCandidate);
       } catch (e) {
         console.error(e);
       }
     })();
   }, [workdir]);
 
-  /* ---------- load selected file content ---------- */
+  /* ---------- load selected file content (files tab only) ---------- */
   useEffect(() => {
     if (!api || !workdir || !selected) return;
     (async () => {
@@ -118,12 +130,32 @@ export default function Results() {
     })();
   }, [workdir, selected]);
 
+  /* ---------- load po.dat ALWAYS (plots tab source) ---------- */
+  useEffect(() => {
+    if (!api || !workdir || !poFileName) {
+      setPoText("");
+      setPoTruncated(false);
+      return;
+    }
+
+    (async () => {
+      try {
+        const r = await api.readRunFile(workdir, poFileName, 2_000_000);
+        setPoText(r?.text || "");
+        setPoTruncated(!!r?.truncated);
+      } catch (e) {
+        console.error(e);
+        setPoText("");
+        setPoTruncated(false);
+      }
+    })();
+  }, [workdir, poFileName]);
+
   /* ---------- load param.txt ALWAYS (for Parameters table + PDF) ---------- */
   useEffect(() => {
     if (!api || !workdir) return;
     (async () => {
       try {
-        // param.txt is inside workdir
         const r = await api.readRunFile(workdir, "param.txt", 500_000);
         setParamText(r?.text || "");
       } catch (e) {
@@ -138,7 +170,7 @@ export default function Results() {
     localStorage.setItem(notesKey, notes);
   }, [notesKey, notes]);
 
-  /* ---------- Parse selected file as table ---------- */
+  /* ---------- Parse selected file as table (files tab) ---------- */
   const table = useMemo(() => {
     const t = parseTable(fileText);
     if (!t) return null;
@@ -146,7 +178,15 @@ export default function Results() {
     return t;
   }, [fileText]);
 
-  /* ---------- Po.dat curves (if table) ---------- */
+  /* ---------- Parse po.dat as table (plots tab) ---------- */
+  const poTable = useMemo(() => {
+    const t = parseTable(poText);
+    if (!t) return null;
+    if (t.cols < 2 || t.rows.length < 2) return null;
+    return t;
+  }, [poText]);
+
+  /* ---------- Curves for selected file (files/report fallback only) ---------- */
   const curves = useMemo(() => {
     if (!table) return [];
     const xs = table.rows.map((r) => r[0]);
@@ -161,239 +201,255 @@ export default function Results() {
     return out;
   }, [table]);
 
-  /* ---------- NEW: parse param.txt into (key,value) rows ---------- */
+  /* ---------- Curves for po.dat (plots tab) ---------- */
+  const poCurves = useMemo(() => {
+    if (!poTable) return [];
+    const xs = poTable.rows.map((r) => r[0]);
+    const out = [];
+    for (let j = 1; j < poTable.cols; j++) {
+      const name = poTable.headers?.[j] || `col${j}`;
+      out.push({
+        name,
+        points: poTable.rows.map((r, i) => ({ x: xs[i], y: r[j] })),
+      });
+    }
+    return out;
+  }, [poTable]);
+
+  /* ---------- parse param.txt into (key,value) rows ---------- */
   const paramKV = useMemo(() => parseParamKV(paramText), [paramText]);
 
   const exportPDF = async () => {
-  try {
-    if (!api) {
-      alert(t("exportWorksElectron"));
-      return;
-    }
-    if (!workdir) {
-      alert(t("workdirNotFound"));
-      return;
-    }
-
-    // 1) logo
-    const logoDataUrl = await assetToDataUrl(logoPng);
-
-    // 2) param.txt
-    let paramTextLocal = "";
     try {
-      const rr = await api.readRunFile(workdir, "param.txt", 2_000_000);
-      paramTextLocal = rr?.text || "";
-    } catch {
-      paramTextLocal = "";
-    }
+      if (!api) {
+        alert(t("exportWorksElectron"));
+        return;
+      }
+      if (!workdir) {
+        alert(t("workdirNotFound"));
+        return;
+      }
 
-    // 3) po.dat -> sempre usar ele no relatório
-    const poFile = files.find((f) => f.toLowerCase().includes("po.dat"));
-    if (!poFile) {
-      alert(t("poDatNotFound"));
-      return;
-    }
+      // 1) logo
+      const logoDataUrl = await assetToDataUrl(logoPng);
 
-    const poResp = await api.readRunFile(workdir, poFile, 2_000_000);
-    const poText = poResp?.text || "";
-    const poParsed = parseTable(poText);
+      // 2) param.txt
+      let paramTextLocal = "";
+      try {
+        const rr = await api.readRunFile(workdir, "param.txt", 2_000_000);
+        paramTextLocal = rr?.text || "";
+      } catch {
+        paramTextLocal = "";
+      }
 
-    if (!poParsed || !poParsed.rows?.length) {
-      alert(t("poDatParseError"));
-      return;
-    }
+      // 3) po.dat -> sempre usar ele no relatório
+      const poFile = files.find((f) => f.toLowerCase().includes("po.dat"));
+      if (!poFile) {
+        alert(t("poDatNotFound"));
+        return;
+      }
 
-    // 4) gerar tabela do po.dat
-    const poHeaders =
-      poParsed.headers && poParsed.headers.length
-        ? poParsed.headers
-        : Array.from({ length: poParsed.cols }, (_, i) => `col${i}`);
+      const poResp = await api.readRunFile(workdir, poFile, 2_000_000);
+      const poTextLocal = poResp?.text || "";
+      const poParsed = parseTable(poTextLocal);
 
-    const fmtCell = (v) => {
-      const n = Number(v);
-      if (!Number.isFinite(n)) return "";
-      const a = Math.abs(n);
-      if (a >= 1000 || (a > 0 && a < 0.001)) return n.toExponential(6);
-      return n.toFixed(8).replace(/0+$/g, "").replace(/\.$/g, "");
-    };
+      if (!poParsed || !poParsed.rows?.length) {
+        alert(t("poDatParseError"));
+        return;
+      }
 
-    const poTable = {
-      headers: poHeaders,
-      rows: poParsed.rows.map((r) => r.map(fmtCell)),
-    };
+      // 4) gerar tabela do po.dat
+      const poHeaders =
+        poParsed.headers && poParsed.headers.length
+          ? poParsed.headers
+          : Array.from({ length: poParsed.cols }, (_, i) => `col${i}`);
 
-    // 5) gerar duas imagens separadas do po.dat
-    const poCols = pickPoColumns(poParsed);
-    if (!poCols) {
-      alert(t("poDatColumnsError"));
-      return;
-    }
+      const fmtCell = (v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return "";
+        const a = Math.abs(n);
+        if (a >= 1000 || (a > 0 && a < 0.001)) return n.toExponential(6);
+        return n.toFixed(8).replace(/0+$/g, "").replace(/\.$/g, "");
+      };
 
-    const poRows = poParsed.rows
-      .map((r) => ({
-        T: r[poCols.t],
-        S: r[poCols.s],
-        varS: r[poCols.varS],
-        E: r[poCols.e],
-        varE: r[poCols.varE],
-      }))
-      .filter((p) => [p.T, p.S, p.E].every((v) => Number.isFinite(v)))
-      .sort((a, b) => a.T - b.T);
+      const poTableExport = {
+        headers: poHeaders,
+        rows: poParsed.rows.map((r) => r.map(fmtCell)),
+      };
 
-    const seriesS = poRows.map((p) => ({
-      x: p.T,
-      y: p.S,
-      lo: Number.isFinite(p.varS) ? p.S - Math.sqrt(Math.max(0, p.varS)) : null,
-      hi: Number.isFinite(p.varS) ? p.S + Math.sqrt(Math.max(0, p.varS)) : null,
-    }));
+      // 5) gerar duas imagens separadas do po.dat
+      const poCols = pickPoColumns(poParsed);
+      if (!poCols) {
+        alert(t("poDatColumnsError"));
+        return;
+      }
 
-    const seriesE = poRows.map((p) => ({
-      x: p.T,
-      y: p.E,
-      lo: Number.isFinite(p.varE) ? p.E - Math.sqrt(Math.max(0, p.varE)) : null,
-      hi: Number.isFinite(p.varE) ? p.E + Math.sqrt(Math.max(0, p.varE)) : null,
-    }));
+      const poRows = poParsed.rows
+        .map((r) => ({
+          T: r[poCols.t],
+          S: r[poCols.s],
+          varS: r[poCols.varS],
+          E: r[poCols.e],
+          varE: r[poCols.varE],
+        }))
+        .filter((p) => [p.T, p.S, p.E].every((v) => Number.isFinite(v)))
+        .sort((a, b) => a.T - b.T);
 
-    // container temporário para renderizar os dois gráficos
-    const host = document.createElement("div");
-    host.style.position = "fixed";
-    host.style.left = "-99999px";
-    host.style.top = "0";
-    host.style.width = "1200px";
-    host.style.background = "#fff";
-    host.style.padding = "20px";
-    document.body.appendChild(host);
+      const seriesS = poRows.map((p) => ({
+        x: p.T,
+        y: p.S,
+        lo: Number.isFinite(p.varS) ? p.S - Math.sqrt(Math.max(0, p.varS)) : null,
+        hi: Number.isFinite(p.varS) ? p.S + Math.sqrt(Math.max(0, p.varS)) : null,
+      }));
 
-    // helper para renderizar SVG de string
-    const renderBandChartSvg = ({ title, xLabel, yLabel, series, accent }) => {
-      const W = 980;
-      const H = 300;
-      const padL = 54;
-      const padR = 20;
-      const padT = 34;
-      const padB = 40;
+      const seriesE = poRows.map((p) => ({
+        x: p.T,
+        y: p.E,
+        lo: Number.isFinite(p.varE) ? p.E - Math.sqrt(Math.max(0, p.varE)) : null,
+        hi: Number.isFinite(p.varE) ? p.E + Math.sqrt(Math.max(0, p.varE)) : null,
+      }));
 
-      const xs = series.map((p) => p.x).filter(Number.isFinite);
-      const ys = series.map((p) => p.y).filter(Number.isFinite);
-      const los = series.map((p) => p.lo).filter(Number.isFinite);
-      const his = series.map((p) => p.hi).filter(Number.isFinite);
+      // container temporário para renderizar os dois gráficos
+      const host = document.createElement("div");
+      host.style.position = "fixed";
+      host.style.left = "-99999px";
+      host.style.top = "0";
+      host.style.width = "1200px";
+      host.style.background = "#fff";
+      host.style.padding = "20px";
+      document.body.appendChild(host);
 
-      const xmin = Math.min(...xs);
-      const xmax = Math.max(...xs);
-      const yMin = Math.min(...ys, ...(los.length ? los : ys));
-      const yMax = Math.max(...ys, ...(his.length ? his : ys));
+      // helper para renderizar SVG de string
+      const renderBandChartSvg = ({ title, xLabel, yLabel, series, accent }) => {
+        const W = 980;
+        const H = 300;
+        const padL = 54;
+        const padR = 20;
+        const padT = 34;
+        const padB = 40;
 
-      const sx = (x) => padL + ((x - xmin) / (xmax - xmin || 1)) * (W - padL - padR);
-      const sy = (y) => H - padB - ((y - yMin) / (yMax - yMin || 1)) * (H - padT - padB);
+        const xs = series.map((p) => p.x).filter(Number.isFinite);
+        const ys = series.map((p) => p.y).filter(Number.isFinite);
+        const los = series.map((p) => p.lo).filter(Number.isFinite);
+        const his = series.map((p) => p.hi).filter(Number.isFinite);
 
-      const grid = 5;
+        const xmin = Math.min(...xs);
+        const xmax = Math.max(...xs);
+        const yMin = Math.min(...ys, ...(los.length ? los : ys));
+        const yMax = Math.max(...ys, ...(his.length ? his : ys));
 
-      const lineD = series
-        .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
-        .map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`)
-        .join(" ");
+        const sx = (x) => padL + ((x - xmin) / (xmax - xmin || 1)) * (W - padL - padR);
+        const sy = (y) => H - padB - ((y - yMin) / (yMax - yMin || 1)) * (H - padT - padB);
 
-      const bandPtsHi = series
-        .filter((p) => Number.isFinite(p.hi))
-        .map((p) => [sx(p.x), sy(p.hi)]);
-      const bandPtsLo = series
-        .filter((p) => Number.isFinite(p.lo))
-        .map((p) => [sx(p.x), sy(p.lo)])
-        .reverse();
+        const grid = 5;
 
-      const bandD =
-        bandPtsHi.length && bandPtsLo.length
-          ? `M ${bandPtsHi[0][0].toFixed(2)} ${bandPtsHi[0][1].toFixed(2)} ` +
-            bandPtsHi.slice(1).map(([x, y]) => `L ${x.toFixed(2)} ${y.toFixed(2)}`).join(" ") +
-            " " +
-            bandPtsLo.map(([x, y]) => `L ${x.toFixed(2)} ${y.toFixed(2)}`).join(" ") +
-            " Z"
-          : "";
+        const lineD = series
+          .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+          .map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`)
+          .join(" ");
 
-      return `
-        <div style="border:1px solid rgba(29,29,29,0.10); border-radius:16px; padding:12px; background:rgba(255,255,255,0.65); margin-bottom:16px;">
-          <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding-bottom:8px;">
-            <div style="font-weight:950; letter-spacing:-0.2px;">${title}</div>
-            <div style="font-size:12px; color:#666; font-weight:750;">
-              x ∈ [${fmt(xmin)}, ${fmt(xmax)}] • y ∈ [${fmt(yMin)}, ${fmt(yMax)}]
+        const bandPtsHi = series
+          .filter((p) => Number.isFinite(p.hi))
+          .map((p) => [sx(p.x), sy(p.hi)]);
+        const bandPtsLo = series
+          .filter((p) => Number.isFinite(p.lo))
+          .map((p) => [sx(p.x), sy(p.lo)])
+          .reverse();
+
+        const bandD =
+          bandPtsHi.length && bandPtsLo.length
+            ? `M ${bandPtsHi[0][0].toFixed(2)} ${bandPtsHi[0][1].toFixed(2)} ` +
+              bandPtsHi.slice(1).map(([x, y]) => `L ${x.toFixed(2)} ${y.toFixed(2)}`).join(" ") +
+              " " +
+              bandPtsLo.map(([x, y]) => `L ${x.toFixed(2)} ${y.toFixed(2)}`).join(" ") +
+              " Z"
+            : "";
+
+        return `
+          <div style="border:1px solid rgba(29,29,29,0.10); border-radius:16px; padding:12px; background:rgba(255,255,255,0.65); margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding-bottom:8px;">
+              <div style="font-weight:950; letter-spacing:-0.2px;">${title}</div>
+              <div style="font-size:12px; color:#666; font-weight:750;">
+                x ∈ [${fmt(xmin)}, ${fmt(xmax)}] • y ∈ [${fmt(yMin)}, ${fmt(yMax)}]
+              </div>
             </div>
+            <svg viewBox="0 0 ${W} ${H}" style="width:100%; height:auto;">
+              <rect x="0" y="0" width="${W}" height="${H}" rx="14" fill="rgba(0,0,0,0.02)" />
+              ${Array.from({ length: grid + 1 })
+                .map((_, i) => {
+                  const tt = i / grid;
+                  const y = padT + tt * (H - padT - padB);
+                  const x = padL + tt * (W - padL - padR);
+                  return `
+                    <g>
+                      <line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(0,0,0,0.08)" />
+                      <line x1="${x}" y1="${padT}" x2="${x}" y2="${H - padB}" stroke="rgba(0,0,0,0.08)" />
+                    </g>
+                  `;
+                })
+                .join("")}
+              <line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="rgba(0,0,0,0.25)" />
+              <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}" stroke="rgba(0,0,0,0.25)" />
+              <text x="${padL}" y="18" font-size="12" fill="rgba(29,29,29,0.70)" font-weight="800">${yLabel}</text>
+              <text x="${W - padR - 18}" y="${H - 10}" font-size="12" fill="rgba(29,29,29,0.70)" font-weight="800">${xLabel}</text>
+              ${bandD ? `<path d="${bandD}" fill="${accent}" opacity="0.14" stroke="none" />` : ""}
+              <path d="${lineD}" fill="none" stroke="${accent}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" />
+            </svg>
           </div>
-          <svg viewBox="0 0 ${W} ${H}" style="width:100%; height:auto;">
-            <rect x="0" y="0" width="${W}" height="${H}" rx="14" fill="rgba(0,0,0,0.02)" />
-            ${Array.from({ length: grid + 1 })
-              .map((_, i) => {
-                const t = i / grid;
-                const y = padT + t * (H - padT - padB);
-                const x = padL + t * (W - padL - padR);
-                return `
-                  <g>
-                    <line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(0,0,0,0.08)" />
-                    <line x1="${x}" y1="${padT}" x2="${x}" y2="${H - padB}" stroke="rgba(0,0,0,0.08)" />
-                  </g>
-                `;
-              })
-              .join("")}
-            <line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="rgba(0,0,0,0.25)" />
-            <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}" stroke="rgba(0,0,0,0.25)" />
-            <text x="${padL}" y="18" font-size="12" fill="rgba(29,29,29,0.70)" font-weight="800">${yLabel}</text>
-            <text x="${W - padR - 18}" y="${H - 10}" font-size="12" fill="rgba(29,29,29,0.70)" font-weight="800">${xLabel}</text>
-            ${bandD ? `<path d="${bandD}" fill="${accent}" opacity="0.14" stroke="none" />` : ""}
-            <path d="${lineD}" fill="none" stroke="${accent}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" />
-          </svg>
-        </div>
+        `;
+      };
+
+      host.innerHTML = `
+        ${renderBandChartSvg({
+          title: t("orderParameterVsTemperature"),
+          xLabel: "T",
+          yLabel: "S",
+          series: seriesS,
+          accent: "#E63946",
+        })}
+        ${renderBandChartSvg({
+          title: t("energyVsTemperature"),
+          xLabel: "T",
+          yLabel: "E",
+          series: seriesE,
+          accent: "rgba(29,29,29,0.75)",
+        })}
       `;
-    };
 
-    host.innerHTML = `
-      ${renderBandChartSvg({
-        title: t("orderParameterVsTemperature"),
-        xLabel: "T",
-        yLabel: "S",
-        series: seriesS,
-        accent: "#E63946",
-      })}
-      ${renderBandChartSvg({
-        title: t("energyVsTemperature"),
-        xLabel: "T",
-        yLabel: "E",
-        series: seriesE,
-        accent: "rgba(29,29,29,0.75)",
-      })}
-    `;
+      const chartNodes = Array.from(host.querySelectorAll("svg"));
+      const poPlots = [];
 
-    const chartNodes = Array.from(host.querySelectorAll("svg"));
-    const poPlots = [];
+      for (let i = 0; i < chartNodes.length; i++) {
+        const svg = chartNodes[i];
+        const wrapper = document.createElement("div");
+        wrapper.appendChild(svg.cloneNode(true));
+        const dataUrl = await capturePlotPngFromDom(wrapper);
 
-    for (let i = 0; i < chartNodes.length; i++) {
-      const svg = chartNodes[i];
-      const wrapper = document.createElement("div");
-      wrapper.appendChild(svg.cloneNode(true));
-      const dataUrl = await capturePlotPngFromDom(wrapper);
+        poPlots.push({
+          title: i === 0 ? "po.dat — S(T)" : "po.dat — E(T)",
+          dataUrl,
+        });
+      }
 
-      poPlots.push({
-        title: i === 0 ? "po.dat — S(T)" : "po.dat — E(T)",
-        dataUrl,
+      document.body.removeChild(host);
+
+      // 6) exportar
+      const res = await api.exportReportPDF({
+        logoDataUrl,
+        paramText: paramTextLocal,
+        notes: notes || "",
+        poPlots,
+        poTable: poTableExport,
       });
+
+      if (res?.canceled) return;
+      alert(`${t("savedAt", { path: res.filePath })}`);
+    } catch (e) {
+      console.error(e);
+      alert(t("exportError", { error: String(e) }));
     }
+  };
 
-    document.body.removeChild(host);
-
-    // 6) exportar
-    const res = await api.exportReportPDF({
-      logoDataUrl,
-      paramText: paramTextLocal,
-      notes: notes || "",
-      poPlots,
-      poTable,
-    });
-
-    if (res?.canceled) return;
-    alert(`${t("savedAt", { path: res.filePath })}`);
-  } catch (e) {
-    console.error(e);
-    aalert(t("exportError", { error: String(e) }));
-  }
-};
   return (
     <div style={s.page}>
       <div style={s.top}>
@@ -459,34 +515,25 @@ export default function Results() {
             <div style={s.panelTitle}>{t("dataSource")}</div>
             <div style={s.panelSub}>{t("dataSourceSub")}</div>
 
-            <select
-              style={s.select}
-              className="ui-hover"
-              value={selected}
-              onChange={(e) => setSelected(e.target.value)}
-            >
-              {files.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
+            <div style={s.fixedSourceBox}>
+              <div style={s.fixedSourceLabel}>po.dat</div>
+              <div style={s.fixedSourceSub}>{t("plotSourceFixedPoDat") || "Fixed source for plots"}</div>
+            </div>
 
-            {!isNumericTextFile(selected) ? (
+            {!poFileName ? (
               <div style={s.warn}>
-                {t("numericFileWarn")}
+                {t("poDatNotFound")}
               </div>
-            ) : !table ? (
+            ) : !poTable ? (
               <div style={s.warn}>
-                {t("parseTableWarn")}
+                {t("poDatParseError")}
               </div>
             ) : (
               <div style={s.okBox}>
-                {t("parsedTable", { rows: table.rows.length, cols: table.cols })}
+                {t("parsedTable", { rows: poTable.rows.length, cols: poTable.cols })}
               </div>
             )}
 
-            {/* NEW: parameters always visible here too */}
             <div style={{ marginTop: 8 }}>
               <div style={s.panelTitle}>{t("parametersParamTxt")}</div>
               <div style={s.panelSub}>{t("parsedParamsSub")}</div>
@@ -505,10 +552,10 @@ export default function Results() {
             </div>
 
             <div style={s.chartBox}>
-              {table && isPoDat(selected, table) ? (
-                <PoDatChart table={table} />
-              ) : curves.length ? (
-                <LineChart curves={curves} />
+              {poTable && isPoDat(poFileName || "po.dat", poTable) ? (
+                <PoDatChart table={poTable} />
+              ) : poCurves.length ? (
+                <LineChart curves={poCurves} />
               ) : (
                 <div style={s.chartEmpty}>{t("noPlotData")}</div>
               )}
@@ -518,14 +565,14 @@ export default function Results() {
           <div style={s.panelFull}>
             <div style={s.panelTitle}>{t("preview")}</div>
             <div style={s.panelSub}>
-              {table ? t("tableViewFirstRows") : t("textView")}
-              {truncated ? ` ${t("truncated")}` : ""}
+              {poTable ? t("tableViewFirstRows") : t("textView")}
+              {poTruncated ? ` ${t("truncated")}` : ""}
             </div>
 
-            {table ? (
-              <DataTable table={table} maxRows={200} />
+            {poTable ? (
+              <DataTable table={poTable} maxRows={200} />
             ) : (
-              <pre style={s.pre}>{fileText || t("empty")}</pre>
+              <pre style={s.pre}>{poText || t("empty")}</pre>
             )}
           </div>
         </div>
@@ -613,10 +660,10 @@ export default function Results() {
             <div style={s.panelSub}>{t("reportPreviewSub")}</div>
 
             <div ref={plotRef} style={s.reportPreviewBox}>
-              {table && isPoDat(selected, table) ? (
-                <PoDatChart table={table} />
-              ) : curves?.length ? (
-                <LineChart curves={curves} />
+              {poTable && isPoDat(poFileName || "po.dat", poTable) ? (
+                <PoDatChart table={poTable} />
+              ) : poCurves?.length ? (
+                <LineChart curves={poCurves} />
               ) : (
                 <div style={s.muted2}>{t("noPlotPreview")}</div>
               )}
@@ -628,17 +675,19 @@ export default function Results() {
               </div>
             </div>
 
-            {/* NEW: show parameters here too */}
             <div style={{ marginTop: 12 }}>
               <div style={s.panelTitle}>{t("parameters")}</div>
               <div style={s.panelSub}>{t("parametersPdfSub")}</div>
-              {paramKV.length ? <KVTable rows={paramKV} /> : <div style={s.warn}>{t("noParameters")}</div>}
+              {paramKV.length ? (
+                <KVTable rows={paramKV} hideValues />
+              ) : (
+                <div style={s.warn}>{t("noParameters")}</div>
+              )}
             </div>
           </div>
         </div>
       ) : null}
 
-      {/* Hover CSS */}
       <style>{`
         .ui-hover:hover{
           transform: translateY(-1px);
@@ -672,9 +721,10 @@ function Tab({ label, active, onClick }) {
   );
 }
 
-/** NEW: simple key/value table for param.txt (no sorting) */
-function KVTable({ rows }) {
+/** key/value table for param.txt */
+function KVTable({ rows, hideValues = false }) {
   const { t } = useUi();
+
   return (
     <div style={s.tableShell}>
       <div style={{ ...s.tableToolbar, justifyContent: "flex-start" }}>
@@ -688,7 +738,7 @@ function KVTable({ rows }) {
           <thead>
             <tr>
               <th style={{ ...s.th2, ...s.thStickyLeft }}>{t("key")}</th>
-              <th style={s.th2}>{t("value")}</th>
+              {!hideValues ? <th style={s.th2}>{t("value")}</th> : null}
             </tr>
           </thead>
 
@@ -696,7 +746,7 @@ function KVTable({ rows }) {
             {rows.map((r, i) => (
               <tr key={i} style={i % 2 === 0 ? s.trEven2 : s.trOdd2}>
                 <td style={{ ...s.td2, ...s.tdStickyLeft }}>{r.key}</td>
-                <td style={s.td2}>{r.value}</td>
+                {!hideValues ? <td style={s.td2}>{r.value}</td> : null}
               </tr>
             ))}
           </tbody>
@@ -706,7 +756,7 @@ function KVTable({ rows }) {
   );
 }
 
-/* ================== DataTable (UPDATED: NO SORT) ================== */
+/* ================== DataTable (NO SORT) ================== */
 
 function DataTable({ table, maxRows = 200 }) {
   const { t } = useUi();
@@ -727,7 +777,6 @@ function DataTable({ table, maxRows = 200 }) {
     );
   }, [table.rows, q]);
 
-  // IMPORTANT: NO SORT — preserve original file order
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages - 1);
 
@@ -803,7 +852,7 @@ function DataTable({ table, maxRows = 200 }) {
                   style={{
                     ...s.th2,
                     ...(i === 0 ? s.thStickyLeft : null),
-                    cursor: "default", // no sorting
+                    cursor: "default",
                   }}
                   title=""
                 >
@@ -901,7 +950,6 @@ function parseParamKV(text) {
     if (!line) continue;
     if (line.startsWith("#")) continue;
 
-    // Accept: "key  value" or "key value"
     const parts = line.split(/\s+/).filter(Boolean);
     if (parts.length < 2) continue;
 
@@ -1054,9 +1102,9 @@ function LineChart({ curves }) {
         <rect x="0" y="0" width={W} height={H} rx="14" fill="rgba(0,0,0,0.02)" />
 
         {Array.from({ length: gridLines + 1 }).map((_, i) => {
-          const t = i / gridLines;
-          const y = pad + t * (H - pad * 2);
-          const x = pad + t * (W - pad * 2);
+          const tt = i / gridLines;
+          const y = pad + tt * (H - pad * 2);
+          const x = pad + tt * (W - pad * 2);
           return (
             <g key={i}>
               <line x1={pad} y1={y} x2={W - pad} y2={y} stroke="rgba(0,0,0,0.08)" />
@@ -1233,9 +1281,9 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
         <rect x="0" y="0" width={W} height={H} rx="14" fill="rgba(0,0,0,0.02)" />
 
         {Array.from({ length: grid + 1 }).map((_, i) => {
-          const t = i / grid;
-          const y = padT + t * (H - padT - padB);
-          const x = padL + t * (W - padL - padR);
+          const tt = i / grid;
+          const y = padT + tt * (H - padT - padB);
+          const x = padL + tt * (W - padL - padR);
           return (
             <g key={i}>
               <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="rgba(0,0,0,0.08)" />
@@ -1417,6 +1465,27 @@ const s = {
     cursor: "pointer",
   },
 
+  fixedSourceBox: {
+    border: "1px solid rgba(29,29,29,0.10)",
+    background: "rgba(245,247,248,0.65)",
+    borderRadius: 14,
+    padding: 12,
+    display: "grid",
+    gap: 4,
+  },
+
+  fixedSourceLabel: {
+    fontWeight: 950,
+    color: "var(--black)",
+    letterSpacing: -0.2,
+  },
+
+  fixedSourceSub: {
+    fontSize: 12,
+    color: "var(--muted)",
+    fontWeight: 750,
+  },
+
   warn: {
     border: "1px solid rgba(230,57,70,0.25)",
     background: "rgba(230,57,70,0.08)",
@@ -1510,7 +1579,6 @@ const s = {
     lineHeight: 1.5,
   },
 
-  // theme helpers
   ok: "#1ea046",
   bad: "#E63946",
 
