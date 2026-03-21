@@ -16,24 +16,89 @@ export default function Home() {
   const [hoverPrimary, setHoverPrimary] = useState(false);
   const [hoverSecondary, setHoverSecondary] = useState(false);
   const [hoveredRow, setHoveredRow] = useState(null);
+  const [openingRecentPath, setOpeningRecentPath] = useState("");
 
   useEffect(() => {
-    (async () => {
+    loadRecents();
+  }, []);
+
+  const loadRecents = async () => {
+    try {
       if (!api) return;
       const r = await api.getRecents();
       setRecents((r || []).slice(0, 5));
-    })();
-  }, []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const newProject = () => {
     nav("/setup", { state: { mode: "new", params: defaultParams() } });
   };
 
   const openProject = async () => {
-    const res = await api?.openParamFile?.();
-    if (res?.canceled) return;
-    nav("/setup", { state: { mode: "open", filePath: res.filePath, params: res.params } });
-    setRecents((res?.recents || []).slice(0, 5));
+    try {
+      const res = await api?.openParamFile?.();
+      if (res?.canceled) return;
+      nav("/setup", { state: { mode: "open", filePath: res.filePath, params: res.params } });
+      setRecents((res?.recents || []).slice(0, 5));
+    } catch (e) {
+      console.error(e);
+      alert(
+        lang?.startsWith("pt")
+          ? "Não foi possível abrir o arquivo selecionado."
+          : "Could not open the selected file."
+      );
+    }
+  };
+
+  const openRecent = async (item) => {
+    if (!api || !item?.path) return;
+
+    try {
+      setOpeningRecentPath(item.path);
+      const res = await api.openRecentProject(item.path);
+
+      if (res?.canceled) return;
+
+      if (res?.missing) {
+        setRecents((res?.recents || []).slice(0, 5));
+        alert(
+          lang?.startsWith("pt")
+            ? "Esse arquivo não foi encontrado. Ele foi removido da lista de recentes."
+            : "This file was not found. It has been removed from the recent list."
+        );
+        return;
+      }
+
+      if (!res?.params) {
+        alert(
+          lang?.startsWith("pt")
+            ? "Não foi possível abrir este projeto recente."
+            : "Could not open this recent project."
+        );
+        return;
+      }
+
+      nav("/setup", {
+        state: {
+          mode: "open",
+          filePath: res.filePath,
+          params: res.params,
+        },
+      });
+
+      setRecents((res?.recents || []).slice(0, 5));
+    } catch (e) {
+      console.error(e);
+      alert(
+        lang?.startsWith("pt")
+          ? "Ocorreu um erro ao abrir este projeto recente."
+          : "An error occurred while opening this recent project."
+      );
+    } finally {
+      setOpeningRecentPath("");
+    }
   };
 
   const niceRecents = useMemo(
@@ -59,7 +124,12 @@ export default function Home() {
               {theme === "light" ? "☀" : "🌙"}
             </button>
 
-            <select value={lang} onChange={(e) => setLang(e.target.value)} style={s.ctrlSelect} title={t("language")}>
+            <select
+              value={lang}
+              onChange={(e) => setLang(e.target.value)}
+              style={s.ctrlSelect}
+              title={t("language")}
+            >
               {LANG_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -78,7 +148,9 @@ export default function Home() {
               style={{
                 ...s.primaryBtn,
                 transform: hoverPrimary ? "translateY(-3px)" : "translateY(0px)",
-                boxShadow: hoverPrimary ? "0 20px 46px rgba(230,57,70,0.30)" : s.primaryBtn.boxShadow,
+                boxShadow: hoverPrimary
+                  ? "0 20px 46px rgba(230,57,70,0.30)"
+                  : s.primaryBtn.boxShadow,
               }}
               onMouseEnter={() => setHoverPrimary(true)}
               onMouseLeave={() => setHoverPrimary(false)}
@@ -92,7 +164,9 @@ export default function Home() {
               style={{
                 ...s.secondaryBtn,
                 transform: hoverSecondary ? "translateY(-3px)" : "translateY(0px)",
-                boxShadow: hoverSecondary ? "0 18px 38px rgba(29,29,29,0.14)" : s.secondaryBtn.boxShadow,
+                boxShadow: hoverSecondary
+                  ? "0 18px 38px rgba(29,29,29,0.14)"
+                  : s.secondaryBtn.boxShadow,
               }}
               onMouseEnter={() => setHoverSecondary(true)}
               onMouseLeave={() => setHoverSecondary(false)}
@@ -108,7 +182,11 @@ export default function Home() {
           <div style={s.panelTop}>
             <div>
               <div style={s.panelTitle}>{t("recentProjects")}</div>
-              <div style={s.panelHint}>{t("lastOpened")}</div>
+              <div style={s.panelHint}>
+                {lang?.startsWith("pt")
+                  ? "Clique em um item para abrir o projeto novamente."
+                  : "Click an item to open the project again."}
+              </div>
             </div>
           </div>
 
@@ -116,31 +194,58 @@ export default function Home() {
             {niceRecents.length === 0 && (
               <div style={s.empty}>
                 <div style={{ fontWeight: 950 }}>{t("noRecentProjects")}</div>
-                <div style={{ marginTop: 6, color: "var(--muted)" }}>{t("noRecentProjectsHint")}</div>
+                <div style={{ marginTop: 6, color: "var(--muted)" }}>
+                  {t("noRecentProjectsHint")}
+                </div>
               </div>
             )}
 
-            {niceRecents.map((r) => (
-              <div
-                key={r.path}
-                style={{
-                  ...s.recentRow,
-                  transform: hoveredRow === r.path ? "translateY(-2px)" : "translateY(0)",
-                  boxShadow: hoveredRow === r.path ? "0 14px 28px rgba(29,29,29,0.10)" : "none",
-                }}
-                onMouseEnter={() => setHoveredRow(r.path)}
-                onMouseLeave={() => setHoveredRow(null)}
-              >
-                <div style={s.recentLeft}>
-                  <div style={s.recentIcon}>📁</div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={s.recentName}>{r.name}</div>
-                    <div style={s.recentPath}>{r.short}</div>
+            {niceRecents.map((r) => {
+              const isOpening = openingRecentPath === r.path;
+              const isHovered = hoveredRow === r.path;
+
+              return (
+                <button
+                  key={r.path}
+                  type="button"
+                  disabled={isOpening}
+                  style={{
+                    ...s.recentRow,
+                    ...(isHovered ? s.recentRowHover : null),
+                    ...(isOpening ? s.recentRowLoading : null),
+                  }}
+                  onMouseEnter={() => setHoveredRow(r.path)}
+                  onMouseLeave={() => setHoveredRow(null)}
+                  onClick={() => openRecent(r)}
+                  title={
+                    lang?.startsWith("pt")
+                      ? `Abrir ${r.name}`
+                      : `Open ${r.name}`
+                  }
+                >
+                  <div style={s.recentLeft}>
+                    <div style={s.recentIcon}>📁</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={s.recentName}>{r.name}</div>
+                      <div style={s.recentPath}>{r.short}</div>
+                    </div>
                   </div>
-                </div>
-                <div style={s.recentDate}>{r.when}</div>
-              </div>
-            ))}
+
+                  <div style={s.recentRight}>
+                    <div style={s.recentDate}>{r.when}</div>
+                    <div style={s.recentAction}>
+                      {isOpening
+                        ? lang?.startsWith("pt")
+                          ? "Abrindo..."
+                          : "Opening..."
+                        : lang?.startsWith("pt")
+                        ? "Abrir"
+                        : "Open"}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </section>
 
@@ -197,7 +302,13 @@ const s = {
     padding: "40px",
     background: "var(--bg)",
   },
-  wrap: { width: "min(980px, 94vw)", display: "grid", gap: 18 },
+
+  wrap: {
+    width: "min(980px, 94vw)",
+    display: "grid",
+    gap: 18,
+  },
+
   hero: {
     position: "relative",
     borderRadius: 28,
@@ -207,7 +318,16 @@ const s = {
     padding: "34px 34px 28px",
     textAlign: "center",
   },
-  topControls: { position: "absolute", top: 14, right: 14, display: "flex", gap: 10, alignItems: "center" },
+
+  topControls: {
+    position: "absolute",
+    top: 14,
+    right: 14,
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+  },
+
   ctrlBtn: {
     border: "1px solid var(--border)",
     background: "rgba(255,255,255,0.70)",
@@ -217,6 +337,7 @@ const s = {
     cursor: "pointer",
     fontWeight: 900,
   },
+
   ctrlSelect: {
     border: "1px solid var(--border)",
     background: "rgba(255,255,255,0.70)",
@@ -226,6 +347,7 @@ const s = {
     cursor: "pointer",
     fontWeight: 800,
   },
+
   logo: {
     width: "min(620px, 92%)",
     height: "auto",
@@ -233,9 +355,33 @@ const s = {
     margin: "0 auto 10px",
     filter: "drop-shadow(0 14px 22px rgba(29,29,29,0.10))",
   },
-  headline: { marginTop: 10, fontSize: 34, fontWeight: 950, letterSpacing: -0.6, lineHeight: 1.12 },
-  sub: { marginTop: 10, color: "var(--muted)", fontSize: 15, fontWeight: 700, maxWidth: 720, marginLeft: "auto", marginRight: "auto" },
-  actions: { marginTop: 24, display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" },
+
+  headline: {
+    marginTop: 10,
+    fontSize: 34,
+    fontWeight: 950,
+    letterSpacing: -0.6,
+    lineHeight: 1.12,
+  },
+
+  sub: {
+    marginTop: 10,
+    color: "var(--muted)",
+    fontSize: 15,
+    fontWeight: 700,
+    maxWidth: 720,
+    marginLeft: "auto",
+    marginRight: "auto",
+  },
+
+  actions: {
+    marginTop: 24,
+    display: "flex",
+    gap: 12,
+    justifyContent: "center",
+    flexWrap: "wrap",
+  },
+
   primaryBtn: {
     display: "inline-flex",
     alignItems: "center",
@@ -251,6 +397,7 @@ const s = {
     boxShadow: "0 16px 34px rgba(230,57,70,0.22)",
     transition: "transform 140ms ease, box-shadow 140ms ease",
   },
+
   secondaryBtn: {
     display: "inline-flex",
     alignItems: "center",
@@ -266,18 +413,140 @@ const s = {
     boxShadow: "0 12px 26px rgba(29,29,29,0.06)",
     transition: "transform 140ms ease, box-shadow 140ms ease",
   },
-  btnIcon: { display: "grid", placeItems: "center", width: 20, height: 20, background: "rgba(255,255,255,0.18)", borderRadius: 999 },
-  btnIconGray: { display: "grid", placeItems: "center", width: 20, height: 20, background: "rgba(29,29,29,0.06)", borderRadius: 999 },
-  panel: { background: "var(--panel)", border: "1px solid var(--border)", boxShadow: "0 14px 34px rgba(29,29,29,0.08)", padding: "18px 18px", borderRadius: 24 },
-  panelTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  panelTitle: { fontSize: 18, fontWeight: 950, letterSpacing: -0.3 },
-  panelHint: { fontSize: 12, color: "var(--muted)", fontWeight: 800, marginTop: 2 },
-  empty: { borderRadius: 18, padding: 20, border: "1px dashed rgba(29,29,29,0.18)", color: "rgba(29,29,29,0.72)", background: "rgba(245,247,248,0.35)" },
-  recentRow: { padding: "12px 14px", border: "1px solid rgba(29,29,29,0.07)", background: "rgba(245,247,248,0.65)", display: "flex", justifyContent: "space-between", alignItems: "center", borderRadius: 16, transition: "transform 140ms ease, box-shadow 140ms ease" },
-  recentLeft: { display: "flex", alignItems: "center", gap: 12, minWidth: 0 },
-  recentIcon: { width: 34, height: 34, borderRadius: 12, display: "grid", placeItems: "center", background: "rgba(29,29,29,0.06)" },
-  recentName: { fontWeight: 900 },
-  recentPath: { color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "58ch" },
-  recentDate: { color: "var(--muted)", fontWeight: 850, fontSize: 13, whiteSpace: "nowrap" },
-  footerHint: { textAlign: "center", color: "var(--muted)", fontWeight: 700, fontSize: 13 },
+
+  btnIcon: {
+    display: "grid",
+    placeItems: "center",
+    width: 20,
+    height: 20,
+    background: "rgba(255,255,255,0.18)",
+    borderRadius: 999,
+  },
+
+  btnIconGray: {
+    display: "grid",
+    placeItems: "center",
+    width: 20,
+    height: 20,
+    background: "rgba(29,29,29,0.06)",
+    borderRadius: 999,
+  },
+
+  panel: {
+    background: "var(--panel)",
+    border: "1px solid var(--border)",
+    boxShadow: "0 14px 34px rgba(29,29,29,0.08)",
+    padding: "18px 18px",
+    borderRadius: 24,
+  },
+
+  panelTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  panelTitle: {
+    fontSize: 18,
+    fontWeight: 950,
+    letterSpacing: -0.3,
+  },
+
+  panelHint: {
+    fontSize: 12,
+    color: "var(--muted)",
+    fontWeight: 800,
+    marginTop: 2,
+  },
+
+  empty: {
+    borderRadius: 18,
+    padding: 20,
+    border: "1px dashed rgba(29,29,29,0.18)",
+    color: "rgba(29,29,29,0.72)",
+    background: "rgba(245,247,248,0.35)",
+  },
+
+  recentRow: {
+    width: "100%",
+    padding: "12px 14px",
+    border: "1px solid rgba(29,29,29,0.07)",
+    background: "rgba(245,247,248,0.65)",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderRadius: 16,
+    transition: "transform 140ms ease, box-shadow 140ms ease",
+    cursor: "pointer",
+    textAlign: "left",
+    color: "var(--black)",
+  },
+
+  recentRowHover: {
+    transform: "translateY(-2px)",
+    boxShadow: "0 14px 28px rgba(29,29,29,0.10)",
+  },
+
+  recentRowLoading: {
+    opacity: 0.7,
+    cursor: "wait",
+  },
+
+  recentLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    minWidth: 0,
+  },
+
+  recentRight: {
+    display: "grid",
+    justifyItems: "end",
+    gap: 4,
+    flexShrink: 0,
+    marginLeft: 12,
+  },
+
+  recentIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    display: "grid",
+    placeItems: "center",
+    background: "rgba(29,29,29,0.06)",
+  },
+
+  recentName: {
+    fontWeight: 900,
+  },
+
+  recentPath: {
+    color: "var(--muted)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: "58ch",
+  },
+
+  recentDate: {
+    color: "var(--muted)",
+    fontWeight: 850,
+    fontSize: 13,
+    whiteSpace: "nowrap",
+  },
+
+  recentAction: {
+    fontSize: 12,
+    fontWeight: 900,
+    color: "var(--black)",
+    opacity: 0.75,
+  },
+
+  footerHint: {
+    textAlign: "center",
+    color: "var(--muted)",
+    fontWeight: 700,
+    fontSize: 13,
+  },
 };

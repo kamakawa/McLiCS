@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("mclist", {
   // recents + files
   getRecents: () => ipcRenderer.invoke("get-recents"),
   openParamFile: () => ipcRenderer.invoke("open-param-file"),
+  openRecentProject: (filePath) => ipcRenderer.invoke("open-recent-project", { filePath }),
   exportParamFile: (paramText) => ipcRenderer.invoke("export-param-file", { paramText }),
 
   // run / cancel

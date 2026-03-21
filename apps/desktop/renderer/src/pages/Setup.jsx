@@ -267,7 +267,13 @@ export default function Setup() {
         </Section>
 
         <Section title={t("potentialPhysics")}>
-          <Row cols={2}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1.4fr 0.6fr",
+              gap: 20,
+            }}
+          >
             <SelectField
               label="potential"
               helpKey="potential"
@@ -284,7 +290,7 @@ export default function Setup() {
               compact
               error={validation.fieldErrors.p0}
             />
-          </Row>
+          </div>
 
           <Row cols={3}>
             <Input
@@ -737,8 +743,10 @@ function Input({
   return (
     <label style={s.field}>
       <div style={s.labelRow}>
-        <div style={s.label}>{label}</div>
-        {helpKey ? <ParamHelp paramKey={helpKey} /> : null}
+        <div style={s.labelGroup}>
+          <div style={s.label}>{label}</div>
+          {helpKey ? <ParamHelp paramKey={helpKey} /> : null}
+        </div>
       </div>
 
       <input
@@ -772,8 +780,10 @@ function SelectField({
   return (
     <label style={s.field}>
       <div style={s.labelRow}>
-        <div style={s.label}>{label}</div>
-        {helpKey ? <ParamHelp paramKey={helpKey} /> : null}
+        <div style={s.labelGroup}>
+          <div style={s.label}>{label}</div>
+          {helpKey ? <ParamHelp paramKey={helpKey} /> : null}
+        </div>
       </div>
 
       <select
@@ -1132,7 +1142,7 @@ const s = {
   labelRow: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     gap: 8,
     minHeight: 18,
   },
@@ -1327,5 +1337,13 @@ const s = {
     color: "var(--black)",
     fontWeight: 750,
     lineHeight: 1.55,
+  },
+
+  labelGroup: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 0,
+    flexWrap: "wrap",
   },
 };

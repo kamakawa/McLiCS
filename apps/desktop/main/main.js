@@ -110,8 +110,48 @@ function touchRecent(filePath) {
   return next;
 }
 
+function removeRecent(filePath) {
+  const next = loadRecents().filter((r) => r?.path !== filePath);
+  saveRecents(next);
+  return next;
+}
+
 ipcMain.handle("get-recents", async () => loadRecents());
 
+ipcMain.handle("open-recent-project", async (_e, { filePath }) => {
+  try {
+    if (!filePath) {
+      return { canceled: true };
+    }
+
+    if (!fs.existsSync(filePath)) {
+      const recents = removeRecent(filePath);
+      return {
+        canceled: false,
+        missing: true,
+        recents,
+      };
+    }
+
+    const text = fs.readFileSync(filePath, "utf8");
+    const params = parseParamText(text);
+    const recents = touchRecent(filePath);
+
+    return {
+      canceled: false,
+      filePath,
+      text,
+      params,
+      recents,
+    };
+  } catch (e) {
+    console.error("open-recent-project error:", e);
+    return {
+      canceled: false,
+      error: String(e),
+    };
+  }
+});
 /* ================= PARAM FILE PARSER ================= */
 
 function defaultParams() {
