@@ -58,7 +58,7 @@ export default function Results() {
   const loc = useLocation();
   const state = loc.state || {};
 
-  const { id, code, mode, workdir, paramPath, exePath, logPath } = state;
+  const { id, code, workdir } = state;
   const ok = Number(code) === 0;
 
   const [tab, setTab] = useState("plots"); // plots | files | notes
@@ -230,10 +230,8 @@ export default function Results() {
         return;
       }
 
-      // 1) logo
       const logoDataUrl = await assetToDataUrl(logoPng);
 
-      // 2) param.txt
       let paramTextLocal = "";
       try {
         const rr = await api.readRunFile(workdir, "param.txt", 2_000_000);
@@ -242,7 +240,6 @@ export default function Results() {
         paramTextLocal = "";
       }
 
-      // 3) po.dat -> sempre usar ele no relatório
       const poFile = files.find((f) => f.toLowerCase().includes("po.dat"));
       if (!poFile) {
         alert(t("poDatNotFound"));
@@ -258,7 +255,6 @@ export default function Results() {
         return;
       }
 
-      // 4) gerar tabela do po.dat
       const poHeaders =
         poParsed.headers && poParsed.headers.length
           ? poParsed.headers
@@ -277,7 +273,6 @@ export default function Results() {
         rows: poParsed.rows.map((r) => r.map(fmtCell)),
       };
 
-      // 5) gerar duas imagens separadas do po.dat
       const poCols = pickPoColumns(poParsed);
       if (!poCols) {
         alert(t("poDatColumnsError"));
@@ -309,7 +304,6 @@ export default function Results() {
         hi: Number.isFinite(p.varE) ? p.E + Math.sqrt(Math.max(0, p.varE)) : null,
       }));
 
-      // container temporário para renderizar os dois gráficos
       const host = document.createElement("div");
       host.style.position = "fixed";
       host.style.left = "-99999px";
@@ -319,7 +313,6 @@ export default function Results() {
       host.style.padding = "20px";
       document.body.appendChild(host);
 
-      // helper para renderizar SVG de string
       const renderBandChartSvg = ({ title, xLabel, yLabel, series, accent }) => {
         const W = 980;
         const H = 300;
@@ -433,7 +426,6 @@ export default function Results() {
 
       document.body.removeChild(host);
 
-      // 6) exportar
       const res = await api.exportReportPDF({
         logoDataUrl,
         paramText: paramTextLocal,
@@ -481,23 +473,16 @@ export default function Results() {
       </div>
 
       <div style={s.headerCard}>
-        <div style={{ display: "grid", gap: 6 }}>
+        <div style={s.headerTitleWrap}>
           <div style={s.h1}>
             {t("results")} —{" "}
             <span style={{ color: ok ? "var(--ok)" : "var(--bad)" }}>
               {ok ? t("success") : t("failed")}
             </span>
           </div>
-          <div style={s.meta}>
-            {t("exitCode")}: <b>{code}</b>
-          </div>
-          <div style={s.metaSmall}>{t("workdir")}: {workdir}</div>
-          <div style={s.metaSmall}>{t("param")}: {paramPath}</div>
-          {logPath ? <div style={s.metaSmall}>{t("log")}: {logPath}</div> : null}
-          {exePath ? <div style={s.metaSmall}>{t("exe")}: {exePath}</div> : null}
         </div>
 
-        <div style={s.tabs}>
+        <div style={s.tabsCentered}>
           <Tab label={t("plots")} active={tab === "plots"} onClick={() => setTab("plots")} />
           <Tab label={t("files")} active={tab === "files"} onClick={() => setTab("files")} />
           <Tab
@@ -508,7 +493,6 @@ export default function Results() {
         </div>
       </div>
 
-      {/* ================== PLOTS TAB ================== */}
       {tab === "plots" ? (
         <div style={s.grid2}>
           <div style={s.panel}>
@@ -517,17 +501,15 @@ export default function Results() {
 
             <div style={s.fixedSourceBox}>
               <div style={s.fixedSourceLabel}>po.dat</div>
-              <div style={s.fixedSourceSub}>{t("plotSourceFixedPoDat") || "Fixed source for plots"}</div>
+              <div style={s.fixedSourceSub}>
+                {t("plotSourceFixedPoDat") || "Fixed source for plots"}
+              </div>
             </div>
 
             {!poFileName ? (
-              <div style={s.warn}>
-                {t("poDatNotFound")}
-              </div>
+              <div style={s.warn}>{t("poDatNotFound")}</div>
             ) : !poTable ? (
-              <div style={s.warn}>
-                {t("poDatParseError")}
-              </div>
+              <div style={s.warn}>{t("poDatParseError")}</div>
             ) : (
               <div style={s.okBox}>
                 {t("parsedTable", { rows: poTable.rows.length, cols: poTable.cols })}
@@ -547,9 +529,7 @@ export default function Results() {
 
           <div style={s.panel}>
             <div style={s.panelTitle}>{t("plot")}</div>
-            <div style={s.panelSub}>
-              {t("plotSub")}
-            </div>
+            <div style={s.panelSub}>{t("plotSub")}</div>
 
             <div style={s.chartBox}>
               {poTable && isPoDat(poFileName || "po.dat", poTable) ? (
@@ -578,7 +558,6 @@ export default function Results() {
         </div>
       ) : null}
 
-      {/* ================== FILES TAB ================== */}
       {tab === "files" ? (
         <div style={s.grid2}>
           <div style={s.panel}>
@@ -618,14 +597,11 @@ export default function Results() {
         </div>
       ) : null}
 
-      {/* ================== NOTES TAB ================== */}
       {tab === "notes" ? (
         <div style={s.grid2}>
           <div style={s.panel}>
             <div style={s.panelTitle}>{t("notes")}</div>
-            <div style={s.panelSub}>
-              {t("notesSub")}
-            </div>
+            <div style={s.panelSub}>{t("notesSub")}</div>
 
             <textarea
               style={s.textarea}
@@ -670,9 +646,7 @@ export default function Results() {
             </div>
 
             <div style={{ marginTop: 10 }}>
-              <div style={s.muted2}>
-                {t("reportTip")}
-              </div>
+              <div style={s.muted2}>{t("reportTip")}</div>
             </div>
 
             <div style={{ marginTop: 12 }}>
@@ -721,7 +695,6 @@ function Tab({ label, active, onClick }) {
   );
 }
 
-/** key/value table for param.txt */
 function KVTable({ rows, hideValues = false }) {
   const { t } = useUi();
 
@@ -1393,17 +1366,28 @@ const s = {
     border: "1px solid var(--border)",
     borderRadius: 18,
     boxShadow: "var(--shadow)",
-    padding: 16,
-    display: "flex",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
+    padding: 18,
+    display: "grid",
     gap: 16,
-    flexWrap: "wrap",
+    justifyItems: "center",
   },
 
-  h1: { fontSize: 20, fontWeight: 950, letterSpacing: -0.3 },
-  meta: { color: "var(--black)", fontWeight: 800 },
-  metaSmall: { color: "var(--muted)", fontWeight: 700, fontSize: 12 },
+  headerTitleWrap: {
+    display: "grid",
+    justifyItems: "center",
+    textAlign: "center",
+    width: "100%",
+  },
+
+  h1: { fontSize: 20, fontWeight: 950, letterSpacing: -0.3, textAlign: "center" },
+
+  tabsCentered: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    justifyContent: "center",
+    width: "100%",
+  },
 
   tabs: { display: "flex", gap: 8, flexWrap: "wrap" },
   tab: {
@@ -1453,17 +1437,6 @@ const s = {
 
   panelTitle: { fontWeight: 950, letterSpacing: -0.2 },
   panelSub: { color: "var(--muted)", fontWeight: 750, fontSize: 12, lineHeight: 1.45 },
-
-  select: {
-    border: "1px solid var(--border)",
-    borderRadius: 14,
-    padding: "10px 12px",
-    background: "transparent",
-    color: "var(--black)",
-    fontWeight: 800,
-    outline: "none",
-    cursor: "pointer",
-  },
 
   fixedSourceBox: {
     border: "1px solid rgba(29,29,29,0.10)",
@@ -1515,7 +1488,13 @@ const s = {
   chartEmpty: { color: "var(--muted)", fontWeight: 800, padding: 10 },
 
   legend: { display: "flex", gap: 10, flexWrap: "wrap", paddingTop: 10 },
-  legendItem: { display: "flex", alignItems: "center", gap: 8, fontWeight: 850, color: "var(--black)" },
+  legendItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontWeight: 850,
+    color: "var(--black)",
+  },
   legendDot: { width: 10, height: 10, borderRadius: 999 },
 
   pre: {
@@ -1578,9 +1557,6 @@ const s = {
     resize: "vertical",
     lineHeight: 1.5,
   },
-
-  ok: "#1ea046",
-  bad: "#E63946",
 
   tableShell: {
     border: "1px solid rgba(29,29,29,0.10)",
