@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import logoPng from "../assets/logo.png";
 import { useUi } from "../components/Shell.jsx";
+import Summary from "./Summary";
 
 const api = window.mclist;
 
@@ -61,7 +62,7 @@ export default function Results() {
   const { id, code, workdir } = state;
   const ok = Number(code) === 0;
 
-  const [tab, setTab] = useState("plots"); // plots | files | notes
+  const [tab, setTab] = useState("summary"); // summary | plots | files | notes
 
   const [files, setFiles] = useState([]);
   const [selected, setSelected] = useState("");
@@ -483,8 +484,21 @@ export default function Results() {
         </div>
 
         <div style={s.tabsCentered}>
-          <Tab label={t("plots")} active={tab === "plots"} onClick={() => setTab("plots")} />
-          <Tab label={t("files")} active={tab === "files"} onClick={() => setTab("files")} />
+          <Tab
+            label={t("summary")}
+            active={tab === "summary"}
+            onClick={() => setTab("summary")}
+          />
+          <Tab
+            label={t("plots")}
+            active={tab === "plots"}
+            onClick={() => setTab("plots")}
+          />
+          <Tab
+            label={t("files")}
+            active={tab === "files"}
+            onClick={() => setTab("files")}
+          />
           <Tab
             label={t("notesReport")}
             active={tab === "notes"}
@@ -492,6 +506,10 @@ export default function Results() {
           />
         </div>
       </div>
+
+      {tab === "summary" ? (
+        <Summary table={poTable} />
+      ) : null}
 
       {tab === "plots" ? (
         <div style={s.grid2}>
@@ -1199,11 +1217,11 @@ function PoDatChart({ table }) {
 
 function BandChart({ title, xLabel, yLabel, series, accent }) {
   const W = 980;
-  const H = 300;
-  const padL = 54;
-  const padR = 20;
-  const padT = 34;
-  const padB = 40;
+  const H = 320;
+  const padL = 70;
+  const padR = 30;
+  const padT = 40;
+  const padB = 60;
 
   const xs = series.map((p) => p.x).filter(Number.isFinite);
   const ys = series.map((p) => p.y).filter(Number.isFinite);
@@ -1212,18 +1230,20 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
 
   const xmin = Math.min(...xs);
   const xmax = Math.max(...xs);
-
-  const yMin = Math.min(...ys, ...(los.length ? los : ys));
-  const yMax = Math.max(...ys, ...(his.length ? his : ys));
+  const ymin = Math.min(...ys, ...(los.length ? los : ys));
+  const ymax = Math.max(...ys, ...(his.length ? his : ys));
 
   const sx = (x) => padL + ((x - xmin) / (xmax - xmin || 1)) * (W - padL - padR);
-  const sy = (y) => H - padB - ((y - yMin) / (yMax - yMin || 1)) * (H - padT - padB);
+  const sy = (y) => H - padB - ((y - ymin) / (ymax - ymin || 1)) * (H - padT - padB);
 
-  const grid = 5;
+  const ticks = 5;
+
+  const xTicks = Array.from({ length: ticks }, (_, i) => xmin + (i / (ticks - 1)) * (xmax - xmin));
+  const yTicks = Array.from({ length: ticks }, (_, i) => ymin + (i / (ticks - 1)) * (ymax - ymin));
 
   const lineD = series
     .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`)
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x)} ${sy(p.y)}`)
     .join(" ");
 
   const bandPtsHi = series.filter((p) => Number.isFinite(p.hi)).map((p) => [sx(p.x), sy(p.hi)]);
@@ -1234,10 +1254,10 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
 
   const bandD =
     bandPtsHi.length && bandPtsLo.length
-      ? `M ${bandPtsHi[0][0].toFixed(2)} ${bandPtsHi[0][1].toFixed(2)} ` +
-        bandPtsHi.slice(1).map(([x, y]) => `L ${x.toFixed(2)} ${y.toFixed(2)}`).join(" ") +
+      ? `M ${bandPtsHi[0][0]} ${bandPtsHi[0][1]} ` +
+        bandPtsHi.slice(1).map(([x, y]) => `L ${x} ${y}`).join(" ") +
         " " +
-        bandPtsLo.map(([x, y]) => `L ${x.toFixed(2)} ${y.toFixed(2)}`).join(" ") +
+        bandPtsLo.map(([x, y]) => `L ${x} ${y}`).join(" ") +
         " Z"
       : "";
 
@@ -1245,52 +1265,67 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
     <div style={s.bandCard}>
       <div style={s.bandHeader}>
         <div style={s.bandTitle}>{title}</div>
-        <div style={s.bandMeta}>
-          x ∈ [{fmt(xmin)}, {fmt(xmax)}] • y ∈ [{fmt(yMin)}, {fmt(yMax)}]
-        </div>
       </div>
 
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }}>
-        <rect x="0" y="0" width={W} height={H} rx="14" fill="rgba(0,0,0,0.02)" />
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%" }}>
+        {/* Grid */}
+        {yTicks.map((y, i) => (
+          <line key={i} x1={padL} y1={sy(y)} x2={W - padR} y2={sy(y)} stroke="rgba(0,0,0,0.08)" />
+        ))}
 
-        {Array.from({ length: grid + 1 }).map((_, i) => {
-          const tt = i / grid;
-          const y = padT + tt * (H - padT - padB);
-          const x = padL + tt * (W - padL - padR);
-          return (
-            <g key={i}>
-              <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="rgba(0,0,0,0.08)" />
-              <line x1={x} y1={padT} x2={x} y2={H - padB} stroke="rgba(0,0,0,0.08)" />
-            </g>
-          );
-        })}
+        {xTicks.map((x, i) => (
+          <line key={i} x1={sx(x)} y1={padT} x2={sx(x)} y2={H - padB} stroke="rgba(0,0,0,0.08)" />
+        ))}
 
-        <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="rgba(0,0,0,0.25)" />
-        <line x1={padL} y1={padT} x2={padL} y2={H - padB} stroke="rgba(0,0,0,0.25)" />
+        {/* Axis */}
+        <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="#000" />
+        <line x1={padL} y1={padT} x2={padL} y2={H - padB} stroke="#000" />
 
-        <text x={padL} y={18} fontSize="12" fill="rgba(29,29,29,0.70)" fontWeight="800">
-          {yLabel}
-        </text>
-        <text
-          x={W - padR - 18}
-          y={H - 10}
-          fontSize="12"
-          fill="rgba(29,29,29,0.70)"
-          fontWeight="800"
-        >
+        {/* Ticks + labels */}
+        {xTicks.map((x, i) => (
+          <g key={i}>
+            <text x={sx(x)} y={H - padB + 18} fontSize="11" textAnchor="middle">
+              {fmt(x)}
+            </text>
+          </g>
+        ))}
+
+        {yTicks.map((y, i) => (
+          <g key={i}>
+            <text x={padL - 8} y={sy(y)} fontSize="11" textAnchor="end" dominantBaseline="middle">
+              {fmt(y)}
+            </text>
+          </g>
+        ))}
+
+        {/* Labels */}
+        <text x={(W - padR + padL) / 2} y={H - 10} textAnchor="middle" fontSize="12" fontWeight="700">
           {xLabel}
         </text>
 
-        {bandD ? <path d={bandD} fill={accent} opacity="0.14" stroke="none" /> : null}
+        <text
+          x="15"
+          y={(H - padB + padT) / 2}
+          transform={`rotate(-90 15 ${(H - padB + padT) / 2})`}
+          textAnchor="middle"
+          fontSize="12"
+          fontWeight="700"
+        >
+          {yLabel}
+        </text>
 
-        <path
-          d={lineD}
-          fill="none"
-          stroke={accent}
-          strokeWidth="2.4"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
+        {/* Band */}
+        {bandD && <path d={bandD} fill={accent} opacity="0.12" />}
+
+        {/* Line */}
+        <path d={lineD} stroke={accent} strokeWidth="2.2" fill="none" />
+
+        {/* Points */}
+        {series.map((p, i) =>
+          Number.isFinite(p.x) && Number.isFinite(p.y) ? (
+            <circle key={i} cx={sx(p.x)} cy={sy(p.y)} r="2.8" fill={accent} />
+          ) : null
+        )}
       </svg>
     </div>
   );
