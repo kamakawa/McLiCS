@@ -1,18 +1,54 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useUi } from "../components/Shell.jsx";
+import { ParamHelp, ParameterHelpPanel } from "../data/parameterHelp.jsx";
+import { getHelpUi } from "../data/parameterHelp.js";
 
 const api = window.mclist;
+
+const SELECT_OPTIONS = {
+  potential: ["ll", "ghrl", "pear"],
+  ic: ["random", "homogeneous", "ic_file", "cholesteric"],
+  evol: ["thermal", "step", "quench", "electric"],
+  geometry: ["bulk", "slab", "sphere", "custom"],
+  xbound: ["free", "periodic"],
+  ybound: ["free", "periodic"],
+  zbound: ["free", "periodic"],
+  anchoring_type: [
+    "rp",
+    "fg",
+    "homeotropic",
+    "strong",
+    "rp_ghrl",
+    "fg_ghrl",
+    "homeotropic_ghrl",
+    "strong_ghrl",
+  ],
+  nk: ["1", "2", "3"],
+};
+
+const INTEGER_FIELDS = new Set(["Nx", "Ny", "Nz", "MCS", "MCT", "fn"]);
+const NUMERIC_FIELDS = new Set(["Ti", "Tf", "dT", "p0", "k11", "k22", "k33"]);
+const ANGLE_REQUIRED_TYPES = new Set(["rp", "strong", "rp_ghrl", "strong_ghrl"]);
 
 export default function Setup() {
   const nav = useNavigate();
   const loc = useLocation();
-  const { t } = useUi();
+  const { t, lang } = useUi();
+  const helpUi = getHelpUi(lang);
 
-  const initial = useMemo(() => loc.state?.params || defaultParams(), [loc.state]);
+  const initial = useMemo(() => normalizeParams(loc.state?.params || defaultParams()), [loc.state]);
   const [p, setP] = useState(initial);
   const [hoverCPU, setHoverCPU] = useState(false);
   const [hoverGPU, setHoverGPU] = useState(false);
+  const [showHelpGuide, setShowHelpGuide] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const validation = useMemo(() => validateParams(p, lang), [p, lang]);
+
+  useEffect(() => {
+    setP(normalizeParams(loc.state?.params || defaultParams()));
+  }, [loc.state]);
 
   const setField = (k, v) => setP((prev) => ({ ...prev, [k]: v }));
 
@@ -22,7 +58,7 @@ export default function Setup() {
       ...prev,
       anchoring: [
         ...(prev.anchoring || []),
-        { id: nextId, type: "", W: "", phi_s: "", theta_s: "" },
+        { id: nextId, type: "homeotropic", W: "", phi_s: "", theta_s: "" },
       ],
     }));
   };
@@ -40,9 +76,14 @@ export default function Setup() {
   };
 
   const exportParam = async () => {
+    if (!validation.ok) {
+      alert(validation.summary);
+      return;
+    }
+
     try {
       if (!api) return alert(t("electronOnlyFeature"));
-      const paramText = buildParamTxt(p);
+      const paramText = buildParamTxt(normalizeParams(p));
       const res = await api.exportParamFile(paramText);
       if (res?.canceled) return;
       alert(t("savedAt", { path: res.filePath }));
@@ -53,9 +94,15 @@ export default function Setup() {
   };
 
   const run = async (mode) => {
+    if (!validation.ok) {
+      alert(validation.summary);
+      return;
+    }
+
     try {
       if (!api) return alert(t("electronOnlyRun"));
-      const res = await api.runSim({ mode, paramText: buildParamTxt(p) });
+      const paramText = buildParamTxt(normalizeParams(p));
+      const res = await api.runSim({ mode, paramText });
       if (!res?.id) {
         alert(t("unexpectedRunResponse", { data: JSON.stringify(res, null, 2) }));
         return;
@@ -83,30 +130,108 @@ export default function Setup() {
           </div>
 
           <div style={s.headerRight}>
+            <button
+              style={{ ...s.btnGhost, ...(showHelpGuide ? s.btnGhostActive : null) }}
+              className="ui-hover"
+              onClick={() => setShowHelpGuide((v) => !v)}
+            >
+              {showHelpGuide ? helpUi.guideButtonHide : helpUi.guideButtonShow}
+            </button>
+
+            <button
+              style={{ ...s.btnGhost, ...(showAdvanced ? s.btnGhostActive : null) }}
+              className="ui-hover"
+              onClick={() => setShowAdvanced((v) => !v)}
+            >
+              {lang?.startsWith("pt") ? "Campos avançados" : "Advanced fields"}
+            </button>
+
             <button style={s.btnGhost} className="ui-hover" onClick={exportParam}>
               {t("exportParameters")}
             </button>
           </div>
         </div>
 
+        {!validation.ok ? (
+          <div style={s.errorPanel}>
+            <div style={s.errorPanelTitle}>
+              {lang?.startsWith("pt")
+                ? "Há campos inválidos na configuração"
+                : "There are invalid fields in the configuration"}
+            </div>
+            <ul style={s.errorList}>
+              {validation.globalErrors.map((msg, idx) => (
+                <li key={idx}>{msg}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {showHelpGuide ? <ParameterHelpPanel /> : null}
+
         <Section title={t("grid")}>
           <Row cols={3}>
-            <Input label="Nx" value={p.Nx} onChange={(v) => setField("Nx", v)} compact />
-            <Input label="Ny" value={p.Ny} onChange={(v) => setField("Ny", v)} compact />
-            <Input label="Nz" value={p.Nz} onChange={(v) => setField("Nz", v)} compact />
+            <Input
+              label="Nx"
+              helpKey="Nx"
+              value={p.Nx}
+              onChange={(v) => setField("Nx", v)}
+              compact
+              error={validation.fieldErrors.Nx}
+            />
+            <Input
+              label="Ny"
+              helpKey="Ny"
+              value={p.Ny}
+              onChange={(v) => setField("Ny", v)}
+              compact
+              error={validation.fieldErrors.Ny}
+            />
+            <Input
+              label="Nz"
+              helpKey="Nz"
+              value={p.Nz}
+              onChange={(v) => setField("Nz", v)}
+              compact
+              error={validation.fieldErrors.Nz}
+            />
           </Row>
         </Section>
 
         <Section title={t("monteCarlo")}>
           <Row cols={4}>
-            <Input label="MCS" value={p.MCS} onChange={(v) => setField("MCS", v)} compact />
-            <Input label="MCT" value={p.MCT} onChange={(v) => setField("MCT", v)} compact />
-            <Input label="fn" value={p.fn} onChange={(v) => setField("fn", v)} compact />
             <Input
+              label="MCS"
+              helpKey="MCS"
+              value={p.MCS}
+              onChange={(v) => setField("MCS", v)}
+              compact
+              error={validation.fieldErrors.MCS}
+            />
+            <Input
+              label="MCT"
+              helpKey="MCT"
+              value={p.MCT}
+              onChange={(v) => setField("MCT", v)}
+              compact
+              error={validation.fieldErrors.MCT}
+            />
+            <Input
+              label="fn"
+              helpKey="fn"
+              value={p.fn}
+              onChange={(v) => setField("fn", v)}
+              compact
+              error={validation.fieldErrors.fn}
+            />
+            <SelectField
               label="nk"
+              helpKey="nk"
               value={p.nk}
               onChange={(v) => setField("nk", v)}
+              options={SELECT_OPTIONS.nk}
               placeholder={t("optional")}
+              error={validation.fieldErrors.nk}
               compact
             />
           </Row>
@@ -114,118 +239,362 @@ export default function Setup() {
 
         <Section title={t("temperatureSchedule")}>
           <Row cols={3}>
-            <Input label="Ti" value={p.Ti} onChange={(v) => setField("Ti", v)} compact />
-            <Input label="Tf" value={p.Tf} onChange={(v) => setField("Tf", v)} compact />
-            <Input label="dT" value={p.dT} onChange={(v) => setField("dT", v)} compact />
+            <Input
+              label="Ti"
+              helpKey="Ti"
+              value={p.Ti}
+              onChange={(v) => setField("Ti", v)}
+              compact
+              error={validation.fieldErrors.Ti}
+            />
+            <Input
+              label="Tf"
+              helpKey="Tf"
+              value={p.Tf}
+              onChange={(v) => setField("Tf", v)}
+              compact
+              error={validation.fieldErrors.Tf}
+            />
+            <Input
+              label="dT"
+              helpKey="dT"
+              value={p.dT}
+              onChange={(v) => setField("dT", v)}
+              compact
+              error={validation.fieldErrors.dT}
+            />
           </Row>
         </Section>
 
         <Section title={t("potentialPhysics")}>
           <Row cols={2}>
-            <Input label="potential" value={p.potential} onChange={(v) => setField("potential", v)} />
-            <Input label="p0" value={p.p0} onChange={(v) => setField("p0", v)} compact />
-          </Row>
-
-          <Row cols={3}>
-            <Input label="k11" value={p.k11} onChange={(v) => setField("k11", v)} compact />
-            <Input label="k22" value={p.k22} onChange={(v) => setField("k22", v)} compact />
-            <Input label="k33" value={p.k33} onChange={(v) => setField("k33", v)} compact />
-          </Row>
-        </Section>
-
-        <Section title={t("initializationEvolution")}>
-          <Row cols={2}>
-            <Input label="ic" value={p.ic} onChange={(v) => setField("ic", v)} />
-            <Input label="evol" value={p.evol} onChange={(v) => setField("evol", v)} placeholder="thermal" />
-          </Row>
-        </Section>
-
-        <Section title={t("geometryBoundaries")}>
-          <Row cols={2}>
-            <Input label="geometry" value={p.geometry} onChange={(v) => setField("geometry", v)} />
+            <SelectField
+              label="potential"
+              helpKey="potential"
+              value={p.potential}
+              onChange={(v) => setField("potential", v)}
+              options={SELECT_OPTIONS.potential}
+              error={validation.fieldErrors.potential}
+            />
             <Input
-              label="boundary_file"
-              value={p.boundary_file}
-              onChange={(v) => setField("boundary_file", v)}
-              placeholder={t("optional")}
+              label="p0"
+              helpKey="p0"
+              value={p.p0}
+              onChange={(v) => setField("p0", v)}
+              compact
+              error={validation.fieldErrors.p0}
             />
           </Row>
 
           <Row cols={3}>
-            <Input label="xbound" value={p.xbound} onChange={(v) => setField("xbound", v)} />
-            <Input label="ybound" value={p.ybound} onChange={(v) => setField("ybound", v)} />
-            <Input label="zbound" value={p.zbound} onChange={(v) => setField("zbound", v)} />
+            <Input
+              label="k11"
+              helpKey="k11"
+              value={p.k11}
+              onChange={(v) => setField("k11", v)}
+              compact
+              error={validation.fieldErrors.k11}
+            />
+            <Input
+              label="k22"
+              helpKey="k22"
+              value={p.k22}
+              onChange={(v) => setField("k22", v)}
+              compact
+              error={validation.fieldErrors.k22}
+            />
+            <Input
+              label="k33"
+              helpKey="k33"
+              value={p.k33}
+              onChange={(v) => setField("k33", v)}
+              compact
+              error={validation.fieldErrors.k33}
+            />
+          </Row>
+        </Section>
+                <Section title={t("initializationEvolution")}>
+          <Row cols={2}>
+            <SelectField
+              label="ic"
+              helpKey="ic"
+              value={p.ic}
+              onChange={(v) => setField("ic", v)}
+              options={SELECT_OPTIONS.ic}
+              error={validation.fieldErrors.ic}
+            />
+            <SelectField
+              label="evol"
+              helpKey="evol"
+              value={p.evol}
+              onChange={(v) => setField("evol", v)}
+              options={SELECT_OPTIONS.evol}
+              error={validation.fieldErrors.evol}
+            />
+          </Row>
+
+          {p.ic === "ic_file" ? (
+            <Row cols={2}>
+              <Input
+                label="ic_file"
+                value={p.ic_file}
+                onChange={(v) => setField("ic_file", v)}
+                placeholder={
+                  lang?.startsWith("pt")
+                    ? "arquivo .csv das condições iniciais"
+                    : "initial condition .csv file"
+                }
+                error={validation.fieldErrors.ic_file}
+              />
+              <div />
+            </Row>
+          ) : null}
+        </Section>
+
+        <Section title={t("geometryBoundaries")}>
+          <Row cols={2}>
+            <SelectField
+              label="geometry"
+              helpKey="geometry"
+              value={p.geometry}
+              onChange={(v) => setField("geometry", v)}
+              options={SELECT_OPTIONS.geometry}
+              error={validation.fieldErrors.geometry}
+            />
+            <Input
+              label="boundary_file"
+              helpKey="boundary_file"
+              value={p.boundary_file}
+              onChange={(v) => setField("boundary_file", v)}
+              placeholder={t("optional")}
+              error={validation.fieldErrors.boundary_file}
+              disabled={p.geometry !== "custom"}
+            />
+          </Row>
+
+          <Row cols={3}>
+            <SelectField
+              label="xbound"
+              helpKey="xbound"
+              value={p.xbound}
+              onChange={(v) => setField("xbound", v)}
+              options={SELECT_OPTIONS.xbound}
+              error={validation.fieldErrors.xbound}
+            />
+            <SelectField
+              label="ybound"
+              helpKey="ybound"
+              value={p.ybound}
+              onChange={(v) => setField("ybound", v)}
+              options={SELECT_OPTIONS.ybound}
+              error={validation.fieldErrors.ybound}
+            />
+            <SelectField
+              label="zbound"
+              helpKey="zbound"
+              value={p.zbound}
+              onChange={(v) => setField("zbound", v)}
+              options={SELECT_OPTIONS.zbound}
+              error={validation.fieldErrors.zbound}
+            />
           </Row>
         </Section>
 
         <Section title={t("anchoringOptional")}>
           <div style={s.anchorWrap}>
-            {(p.anchoring || []).map((a, idx) => (
-              <div key={idx} style={s.anchorCard}>
-                <div style={s.anchorTop}>
-                  <div>
-                    <div style={s.anchorTitle}>{`Anchoring #${idx}`}</div>
-                    <div style={s.anchorSub}>{t("anchoringFormat", { index: idx })}</div>
+            {(p.anchoring || []).map((a, idx) => {
+              const anchorErrors = validation.anchorErrors[idx] || {};
+              const requiresAngles = ANGLE_REQUIRED_TYPES.has(
+                String(a.type || "").toLowerCase()
+              );
+
+              return (
+                <div key={idx} style={s.anchorCard}>
+                  <div style={s.anchorTop}>
+                    <div>
+                      <div style={s.anchorTitle}>{`Anchoring #${idx}`}</div>
+                      <div style={s.anchorSub}>{t("anchoringFormat", { index: idx })}</div>
+                    </div>
+
+                    <div style={s.anchorActions}>
+                      <button
+                        style={s.smallBtn}
+                        className="ui-hover"
+                        onClick={() => duplicateAnchoring(idx)}
+                      >
+                        {t("duplicate")}
+                      </button>
+
+                      <button
+                        style={s.smallBtnDanger}
+                        className="ui-hover"
+                        onClick={() => removeAnchoring(idx)}
+                      >
+                        {t("remove")}
+                      </button>
+                    </div>
                   </div>
 
-                  <div style={s.anchorActions}>
-                    <button
-                      style={s.smallBtn}
-                      className="ui-hover"
-                      onClick={() => duplicateAnchoring(idx)}
-                    >
-                      {t("duplicate")}
-                    </button>
+                  <Row cols={4}>
+                    <SelectField
+                      label="anchoring_type"
+                      helpKey="anchoring_type"
+                      value={a.type}
+                      onChange={(v) => updateAnchor(setP, idx, { type: v })}
+                      options={SELECT_OPTIONS.anchoring_type}
+                      error={anchorErrors.type}
+                    />
+                    <Input
+                      label="W"
+                      helpKey="W"
+                      value={a.W}
+                      onChange={(v) => updateAnchor(setP, idx, { W: v })}
+                      placeholder="e.g. 1"
+                      compact
+                      error={anchorErrors.W}
+                    />
+                    <Input
+                      label={`phi_s (${
+                        requiresAngles
+                          ? lang?.startsWith("pt")
+                            ? "obrigatório"
+                            : "required"
+                          : t("optional")
+                      })`}
+                      helpKey="phi_s"
+                      value={a.phi_s}
+                      onChange={(v) => updateAnchor(setP, idx, { phi_s: v })}
+                      placeholder="e.g. 0"
+                      compact
+                      error={anchorErrors.phi_s}
+                    />
+                    <Input
+                      label={`theta_s (${
+                        requiresAngles
+                          ? lang?.startsWith("pt")
+                            ? "obrigatório"
+                            : "required"
+                          : t("optional")
+                      })`}
+                      helpKey="theta_s"
+                      value={a.theta_s}
+                      onChange={(v) => updateAnchor(setP, idx, { theta_s: v })}
+                      placeholder="e.g. 90"
+                      compact
+                      error={anchorErrors.theta_s}
+                    />
+                  </Row>
 
-                    <button
-                      style={s.smallBtnDanger}
-                      className="ui-hover"
-                      onClick={() => removeAnchoring(idx)}
-                    >
-                      {t("remove")}
-                    </button>
+                  <div style={s.anchorHint}>
+                    {requiresAngles
+                      ? lang?.startsWith("pt")
+                        ? "Esse tipo de ancoragem exige phi_s e theta_s, além de W."
+                        : "This anchoring type requires phi_s and theta_s in addition to W."
+                      : t("anchoringHint")}
                   </div>
                 </div>
-
-                <Row cols={4}>
-                  <Input
-                    label="anchoring_type"
-                    value={a.type}
-                    onChange={(v) => updateAnchor(setP, idx, { type: v })}
-                    placeholder="homeotropic, planar, rp..."
-                  />
-                  <Input
-                    label="W"
-                    value={a.W}
-                    onChange={(v) => updateAnchor(setP, idx, { W: v })}
-                    placeholder="e.g. 1"
-                    compact
-                  />
-                  <Input
-                    label={`phi_s (${t("optional")})`}
-                    value={a.phi_s}
-                    onChange={(v) => updateAnchor(setP, idx, { phi_s: v })}
-                    placeholder="e.g. 0"
-                    compact
-                  />
-                  <Input
-                    label={`theta_s (${t("optional")})`}
-                    value={a.theta_s}
-                    onChange={(v) => updateAnchor(setP, idx, { theta_s: v })}
-                    placeholder="e.g. 90"
-                    compact
-                  />
-                </Row>
-
-                <div style={s.anchorHint}>{t("anchoringHint")}</div>
-              </div>
-            ))}
+              );
+            })}
 
             <button style={s.btnGhostWide} className="ui-hover" onClick={addAnchoring}>
               {t("addAnchoring")}
             </button>
           </div>
         </Section>
+
+        {showAdvanced ? (
+          <Section title={lang?.startsWith("pt") ? "Campos avançados" : "Advanced fields"}>
+            <Row cols={3}>
+              <Input
+                label="phi_0"
+                value={p.phi_0}
+                onChange={(v) => setField("phi_0", v)}
+                compact
+                error={validation.fieldErrors.phi_0}
+              />
+              <Input
+                label="theta_0"
+                value={p.theta_0}
+                onChange={(v) => setField("theta_0", v)}
+                compact
+                error={validation.fieldErrors.theta_0}
+              />
+              <Input
+                label="p0_i"
+                value={p.p0_i}
+                onChange={(v) => setField("p0_i", v)}
+                compact
+                error={validation.fieldErrors.p0_i}
+              />
+            </Row>
+
+            <Row cols={2}>
+              <Input
+                label="first_file_number"
+                value={p.first_file}
+                onChange={(v) => setField("first_file", v)}
+                compact
+                error={validation.fieldErrors.first_file}
+              />
+              <div />
+            </Row>
+
+            <Row cols={4}>
+              <Input
+                label="elecX"
+                value={p.elecX}
+                onChange={(v) => setField("elecX", v)}
+                compact
+                error={validation.fieldErrors.elecX}
+              />
+              <Input
+                label="elecY"
+                value={p.elecY}
+                onChange={(v) => setField("elecY", v)}
+                compact
+                error={validation.fieldErrors.elecY}
+              />
+              <Input
+                label="elecZ"
+                value={p.elecZ}
+                onChange={(v) => setField("elecZ", v)}
+                compact
+                error={validation.fieldErrors.elecZ}
+              />
+              <Input
+                label="elecA"
+                value={p.elecA}
+                onChange={(v) => setField("elecA", v)}
+                compact
+                error={validation.fieldErrors.elecA}
+              />
+            </Row>
+
+            <Row cols={3}>
+              <Input
+                label="elecEi"
+                value={p.elecEi}
+                onChange={(v) => setField("elecEi", v)}
+                compact
+                error={validation.fieldErrors.elecEi}
+              />
+              <Input
+                label="elecEf"
+                value={p.elecEf}
+                onChange={(v) => setField("elecEf", v)}
+                compact
+                error={validation.fieldErrors.elecEf}
+              />
+              <Input
+                label="elecdE"
+                value={p.elecdE}
+                onChange={(v) => setField("elecdE", v)}
+                compact
+                error={validation.fieldErrors.elecdE}
+              />
+            </Row>
+          </Section>
+        ) : null}
 
         <div style={s.footer}>
           <div style={s.footerLeft}>
@@ -246,6 +615,7 @@ export default function Setup() {
               onMouseEnter={() => setHoverCPU(true)}
               onMouseLeave={() => setHoverCPU(false)}
               onClick={() => run("cpu")}
+              disabled={!validation.ok}
             >
               {t("runCPU")}
             </button>
@@ -262,12 +632,13 @@ export default function Setup() {
               onMouseEnter={() => setHoverGPU(true)}
               onMouseLeave={() => setHoverGPU(false)}
               onClick={() => run("gpu")}
+              disabled={!validation.ok}
             >
               {t("runGPU")}
             </button>
           </div>
         </div>
-      </div>
+              </div>
 
       <style>{`
         .ui-hover:hover{
@@ -353,17 +724,76 @@ function Row({ cols = 2, children }) {
   );
 }
 
-function Input({ label, value, onChange, placeholder, compact = false }) {
+function Input({
+  label,
+  helpKey,
+  value,
+  onChange,
+  placeholder,
+  compact = false,
+  error,
+  disabled = false,
+}) {
   return (
     <label style={s.field}>
-      <div style={s.label}>{label}</div>
+      <div style={s.labelRow}>
+        <div style={s.label}>{label}</div>
+        {helpKey ? <ParamHelp paramKey={helpKey} /> : null}
+      </div>
+
       <input
         value={value ?? ""}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        style={compact ? s.inputCompact : s.input}
+        style={{
+          ...(compact ? s.inputCompact : s.input),
+          ...(error ? s.inputError : null),
+          ...(disabled ? s.inputDisabled : null),
+        }}
         className="setup-input"
+        disabled={disabled}
       />
+
+      {error ? <div style={s.fieldError}>{error}</div> : null}
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  helpKey,
+  value,
+  onChange,
+  options,
+  placeholder,
+  compact = false,
+  error,
+}) {
+  return (
+    <label style={s.field}>
+      <div style={s.labelRow}>
+        <div style={s.label}>{label}</div>
+        {helpKey ? <ParamHelp paramKey={helpKey} /> : null}
+      </div>
+
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          ...(compact ? s.inputCompact : s.input),
+          ...(error ? s.inputError : null),
+        }}
+        className="setup-input"
+      >
+        {placeholder ? <option value="">{placeholder}</option> : null}
+        {options.map((opt) => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+      </select>
+
+      {error ? <div style={s.fieldError}>{error}</div> : null}
     </label>
   );
 }
@@ -422,6 +852,10 @@ function buildParamTxt(p) {
   lines.push("");
 
   push(lines, "ic", p.ic);
+  push(lines, "ic_file", p.ic_file);
+  push(lines, "phi_0", p.phi_0);
+  push(lines, "theta_0", p.theta_0);
+  push(lines, "p0_i", p.p0_i);
 
   lines.push("");
 
@@ -434,17 +868,28 @@ function buildParamTxt(p) {
   lines.push("");
 
   push(lines, "evol", p.evol || "thermal");
+  push(lines, "first_file_number", p.first_file);
+
+  lines.push("");
+
+  push(lines, "elecX", p.elecX);
+  push(lines, "elecY", p.elecY);
+  push(lines, "elecZ", p.elecZ);
+  push(lines, "elecA", p.elecA);
+  push(lines, "elecEi", p.elecEi);
+  push(lines, "elecEf", p.elecEf);
+  push(lines, "elecdE", p.elecdE);
 
   const anchors = (p.anchoring || [])
     .map((a, i) => ({ ...a, id: i }))
-    .filter((a) => clean(a.type) && clean(a.W));
+    .filter((a) => clean(a.type) || clean(a.W) || clean(a.phi_s) || clean(a.theta_s));
 
   if (anchors.length) {
     lines.push("");
 
     anchors.forEach((a) => {
-      push3(lines, "anchoring_type", a.id, a.type);
-      push3(lines, "W", a.id, a.W);
+      if (clean(a.type)) push3(lines, "anchoring_type", a.id, a.type);
+      if (clean(a.W)) push3(lines, "W", a.id, a.W);
       if (clean(a.phi_s)) push3(lines, "phi_s", a.id, a.phi_s);
       if (clean(a.theta_s)) push3(lines, "theta_s", a.id, a.theta_s);
       lines.push("");
@@ -452,6 +897,22 @@ function buildParamTxt(p) {
   }
 
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+}
+
+function normalizeParams(raw) {
+  const base = defaultParams();
+  const p = { ...base, ...(raw || {}) };
+
+  if (!Array.isArray(p.anchoring)) p.anchoring = [];
+  p.anchoring = p.anchoring.map((a, i) => ({
+    id: i,
+    type: clean(a?.type || a?.anchoring_type || "homeotropic"),
+    W: clean(a?.W),
+    phi_s: clean(a?.phi_s),
+    theta_s: clean(a?.theta_s),
+  }));
+
+  return p;
 }
 
 function defaultParams() {
@@ -467,35 +928,178 @@ function defaultParams() {
     dT: "-0.05",
     p0: "0",
     fn: "2",
-    nk: "",
+    nk: "1",
     k11: "1",
     k22: "1.0",
     k33: "1",
     ic: "random",
+    ic_file: "",
+    phi_0: "",
+    theta_0: "",
+    p0_i: "",
     evol: "thermal",
     geometry: "bulk",
     boundary_file: "",
     xbound: "periodic",
     ybound: "periodic",
     zbound: "periodic",
+    first_file: "",
+    elecX: "",
+    elecY: "",
+    elecZ: "",
+    elecA: "",
+    elecEi: "",
+    elecEf: "",
+    elecdE: "",
     anchoring: [],
   };
 }
+function isIntegerString(value) {
+  return /^[-+]?\d+$/.test(clean(value));
+}
+
+function isNumberString(value) {
+  return /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/.test(clean(value));
+}
+
+function validateParams(p, lang) {
+  const pt = String(lang || "").toLowerCase().startsWith("pt");
+  const fieldErrors = {};
+  const globalErrors = [];
+  const anchorErrors = [];
+
+  const req = (label) => (pt ? `${label} é obrigatório.` : `${label} is required.`);
+  const intErr = (label) =>
+    pt ? `${label} deve ser um inteiro válido.` : `${label} must be a valid integer.`;
+  const intPosErr = (label) =>
+    pt
+      ? `${label} deve ser um inteiro maior que zero.`
+      : `${label} must be an integer greater than zero.`;
+  const numErr = (label) =>
+    pt ? `${label} deve ser um número válido.` : `${label} must be a valid number.`;
+  const optErr = (label, options) =>
+    pt
+      ? `${label} deve ser uma destas opções: ${options.join(", ")}.`
+      : `${label} must be one of: ${options.join(", ")}.`;
+
+  for (const key of INTEGER_FIELDS) {
+    const v = clean(p[key]);
+    if (!v) {
+      fieldErrors[key] = req(key);
+    } else if (!isIntegerString(v)) {
+      fieldErrors[key] = intErr(key);
+    } else if (Number(v) <= 0) {
+      fieldErrors[key] = intPosErr(key);
+    }
+  }
+
+  for (const key of NUMERIC_FIELDS) {
+    const v = clean(p[key]);
+    if (!v) {
+      fieldErrors[key] = req(key);
+    } else if (!isNumberString(v)) {
+      fieldErrors[key] = numErr(key);
+    }
+  }
+
+  const firstFile = clean(p.first_file);
+  if (firstFile && !isIntegerString(firstFile)) {
+    fieldErrors.first_file = intErr("first_file_number");
+  }
+
+  for (const key of [
+    "phi_0",
+    "theta_0",
+    "p0_i",
+    "elecX",
+    "elecY",
+    "elecZ",
+    "elecA",
+    "elecEi",
+    "elecEf",
+    "elecdE",
+  ]) {
+    const v = clean(p[key]);
+    if (v && !isNumberString(v)) fieldErrors[key] = numErr(key);
+  }
+
+  if (clean(p.nk) && !SELECT_OPTIONS.nk.includes(clean(p.nk))) {
+    fieldErrors.nk = optErr("nk", SELECT_OPTIONS.nk);
+  }
+
+  for (const key of ["potential", "ic", "evol", "geometry", "xbound", "ybound", "zbound"]) {
+    const options = SELECT_OPTIONS[key];
+    const v = clean(p[key]);
+    if (!v) fieldErrors[key] = req(key);
+    else if (!options.includes(v)) fieldErrors[key] = optErr(key, options);
+  }
+
+  if (p.geometry === "custom" && !clean(p.boundary_file)) {
+    fieldErrors.boundary_file = pt
+      ? "boundary_file é obrigatório quando geometry = custom."
+      : "boundary_file is required when geometry = custom.";
+  }
+
+  if (p.ic === "ic_file" && !clean(p.ic_file)) {
+    fieldErrors.ic_file = pt
+      ? "ic_file é obrigatório quando ic = ic_file."
+      : "ic_file is required when ic = ic_file.";
+  }
+
+  const anchors = Array.isArray(p.anchoring) ? p.anchoring : [];
+  anchors.forEach((a, idx) => {
+    const entry = {};
+    const type = clean(a.type);
+    const W = clean(a.W);
+    const phi = clean(a.phi_s);
+    const theta = clean(a.theta_s);
+
+    if (!type && !W && !phi && !theta) {
+      anchorErrors[idx] = entry;
+      return;
+    }
+
+    if (!type) entry.type = req("anchoring_type");
+    else if (!SELECT_OPTIONS.anchoring_type.includes(type)) {
+      entry.type = optErr("anchoring_type", SELECT_OPTIONS.anchoring_type);
+    }
+
+    if (!W) entry.W = req("W");
+    else if (!isNumberString(W)) entry.W = numErr("W");
+
+    if (ANGLE_REQUIRED_TYPES.has(type)) {
+      if (!phi) entry.phi_s = req("phi_s");
+      else if (!isNumberString(phi)) entry.phi_s = numErr("phi_s");
+
+      if (!theta) entry.theta_s = req("theta_s");
+      else if (!isNumberString(theta)) entry.theta_s = numErr("theta_s");
+    } else {
+      if (phi && !isNumberString(phi)) entry.phi_s = numErr("phi_s");
+      if (theta && !isNumberString(theta)) entry.theta_s = numErr("theta_s");
+    }
+
+    anchorErrors[idx] = entry;
+  });
+
+  Object.values(fieldErrors).forEach((msg) => globalErrors.push(msg));
+  anchorErrors.forEach((entry, idx) => {
+    Object.values(entry || {}).forEach((msg) =>
+      globalErrors.push(`Anchoring #${idx}: ${msg}`)
+    );
+  });
+
+  const summary = globalErrors.length
+    ? pt
+      ? `Corrija os campos inválidos antes de continuar:\n\n- ${globalErrors.join("\n- ")}`
+      : `Please fix the invalid fields before continuing:\n\n- ${globalErrors.join("\n- ")}`
+    : "";
+
+  return { ok: globalErrors.length === 0, fieldErrors, anchorErrors, globalErrors, summary };
+}
 
 const s = {
-  page: {
-    display: "grid",
-    padding: 20,
-  },
-
-  container: {
-    width: "100%",
-    maxWidth: 1220,
-    margin: "0 auto",
-    display: "grid",
-    gap: 18,
-  },
-
+  page: { display: "grid", padding: 20 },
+  container: { width: "100%", maxWidth: 1220, margin: "0 auto", display: "grid", gap: 18 },
   header: {
     background: "var(--panel)",
     border: "1px solid var(--border)",
@@ -508,32 +1112,10 @@ const s = {
     gap: 14,
     flexWrap: "wrap",
   },
-
-  headerLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-
-  headerRight: {
-    display: "flex",
-    gap: 10,
-    flexWrap: "wrap",
-  },
-
-  hTitle: {
-    fontSize: 20,
-    fontWeight: 950,
-    letterSpacing: "-0.03em",
-  },
-
-  hSub: {
-    marginTop: 3,
-    fontSize: 12,
-    color: "var(--muted)",
-    fontWeight: 700,
-  },
+  headerLeft: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" },
+  headerRight: { display: "flex", gap: 10, flexWrap: "wrap" },
+  hTitle: { fontSize: 20, fontWeight: 950, letterSpacing: "-0.03em" },
+  hSub: { marginTop: 3, fontSize: 12, color: "var(--muted)", fontWeight: 700 },
 
   section: {
     background: "var(--panel)",
@@ -544,24 +1126,25 @@ const s = {
     display: "grid",
     gap: 14,
   },
+  sectionTitle: { fontWeight: 950, letterSpacing: "-0.02em", fontSize: 16 },
 
-  sectionTitle: {
-    fontWeight: 950,
-    letterSpacing: "-0.02em",
-    fontSize: 16,
+  field: { display: "grid", gap: 7, minWidth: 0 },
+  labelRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    minHeight: 18,
   },
-
-  field: {
-    display: "grid",
-    gap: 7,
-    minWidth: 0,
-  },
-
   label: {
     fontSize: 12,
     color: "var(--muted)",
     fontWeight: 850,
     paddingLeft: 2,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 0,
   },
 
   input: {
@@ -578,7 +1161,6 @@ const s = {
     fontSize: 14,
     boxSizing: "border-box",
   },
-
   inputCompact: {
     width: "100%",
     maxWidth: 220,
@@ -594,6 +1176,20 @@ const s = {
     fontSize: 14,
     boxSizing: "border-box",
   },
+  inputError: {
+    border: "1px solid rgba(230,57,70,0.45)",
+    boxShadow: "0 0 0 3px rgba(230,57,70,0.10)",
+  },
+  inputDisabled: {
+    opacity: 0.55,
+    cursor: "not-allowed",
+  },
+  fieldError: {
+    fontSize: 11,
+    color: "var(--bad)",
+    fontWeight: 800,
+    lineHeight: 1.4,
+  },
 
   btnGhost: {
     border: "1px solid var(--border)",
@@ -605,7 +1201,10 @@ const s = {
     fontWeight: 900,
     transition: "transform 140ms ease, box-shadow 140ms ease",
   },
-
+  btnGhostActive: {
+    border: "1px solid rgba(230,57,70,0.22)",
+    boxShadow: "0 12px 24px rgba(230,57,70,0.12)",
+  },
   btnGhostWide: {
     border: "1px dashed rgba(29,29,29,0.18)",
     background: "rgba(245,247,248,0.35)",
@@ -617,11 +1216,7 @@ const s = {
     transition: "transform 140ms ease, box-shadow 140ms ease",
   },
 
-  anchorWrap: {
-    display: "grid",
-    gap: 12,
-  },
-
+  anchorWrap: { display: "grid", gap: 12 },
   anchorCard: {
     border: "1px solid rgba(29,29,29,0.08)",
     borderRadius: 18,
@@ -630,7 +1225,6 @@ const s = {
     gap: 12,
     background: "rgba(245,247,248,0.45)",
   },
-
   anchorTop: {
     display: "flex",
     alignItems: "center",
@@ -638,24 +1232,14 @@ const s = {
     gap: 12,
     flexWrap: "wrap",
   },
-
-  anchorActions: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-
-  anchorTitle: {
-    fontWeight: 950,
-  },
-
+  anchorActions: { display: "flex", gap: 8, flexWrap: "wrap" },
+  anchorTitle: { fontWeight: 950 },
   anchorSub: {
     fontSize: 12,
     color: "var(--muted)",
     fontWeight: 700,
     marginTop: 2,
   },
-
   anchorHint: {
     fontSize: 12,
     color: "var(--muted)",
@@ -674,7 +1258,6 @@ const s = {
     fontSize: 12,
     transition: "transform 140ms ease, box-shadow 140ms ease",
   },
-
   smallBtnDanger: {
     border: "1px solid rgba(230,57,70,0.25)",
     background: "rgba(230,57,70,0.10)",
@@ -702,28 +1285,10 @@ const s = {
     gap: 14,
     flexWrap: "wrap",
   },
-
-  footerLeft: {
-    display: "grid",
-    gap: 3,
-  },
-
-  footerTitle: {
-    fontWeight: 950,
-  },
-
-  footerSub: {
-    fontSize: 12,
-    color: "var(--muted)",
-    fontWeight: 700,
-  },
-
-  runActions: {
-    display: "flex",
-    gap: 10,
-    flexWrap: "wrap",
-  },
-
+  footerLeft: { display: "grid", gap: 3 },
+  footerTitle: { fontWeight: 950 },
+  footerSub: { fontSize: 12, color: "var(--muted)", fontWeight: 700 },
+  runActions: { display: "flex", gap: 10, flexWrap: "wrap" },
   runCPU: {
     border: "1px solid var(--border)",
     background: "rgba(245,247,248,0.88)",
@@ -735,7 +1300,6 @@ const s = {
     transition: "transform 140ms ease, box-shadow 140ms ease",
     boxShadow: "0 10px 22px rgba(29,29,29,0.06)",
   },
-
   runGPU: {
     border: "1px solid rgba(230,57,70,0.25)",
     background: "linear-gradient(180deg, rgba(230,57,70,1), rgba(190,30,44,1))",
@@ -746,5 +1310,22 @@ const s = {
     fontWeight: 950,
     transition: "transform 140ms ease, box-shadow 140ms ease",
     boxShadow: "0 14px 30px rgba(230,57,70,0.20)",
+  },
+
+  errorPanel: {
+    border: "1px solid rgba(230,57,70,0.24)",
+    background: "rgba(230,57,70,0.08)",
+    borderRadius: 18,
+    padding: 16,
+    display: "grid",
+    gap: 8,
+  },
+  errorPanelTitle: { fontWeight: 950, color: "var(--black)" },
+  errorList: {
+    margin: 0,
+    paddingLeft: 20,
+    color: "var(--black)",
+    fontWeight: 750,
+    lineHeight: 1.55,
   },
 };
