@@ -20,9 +20,13 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadURL("http://localhost:5173/");
+  if (app.isPackaged) {
+    const indexPath = path.join(process.resourcesPath, "renderer-dist", "index.html");
+    mainWindow.loadFile(indexPath);
+  } else {
+    mainWindow.loadURL("http://localhost:5173/");
+  }
 }
-
 app.whenReady().then(createWindow);
 
 app.on("window-all-closed", () => {
@@ -45,8 +49,20 @@ function projectRoot() {
   return path.resolve(__dirname, "..", "..", "..");
 }
 
-function backendDir() {
+function devBackendDir() {
   return path.join(projectRoot(), "backend");
+}
+
+function packagedBackendDir() {
+  return path.join(process.resourcesPath, "backend", "linux-x64");
+}
+
+function backendDir() {
+  return app.isPackaged ? packagedBackendDir() : devBackendDir();
+}
+
+function backendBinaryName(mode) {
+  return mode === "cpu" ? "mc_sim_cpu" : "mc_sim";
 }
 
 function runsBaseDir() {
@@ -397,30 +413,34 @@ ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
 
   const backend = backendDir();
 
-  console.log("===== COMPILING BACKEND =====");
-  console.log("Mode:", mode);
-  console.log("Backend:", backend);
+  let exePath = path.join(backend, backendBinaryName(mode));
 
-  const makeArgs = mode === "cpu" ? ["CPU"] : [];
-  const compile = spawnSync("make", makeArgs, {
-    cwd: backend,
-    encoding: "utf8",
-  });
+  if (!app.isPackaged) {
+    console.log("===== COMPILING BACKEND (DEV MODE) =====");
+    console.log("Mode:", mode);
+    console.log("Backend:", backend);
 
-  if (compile.stdout) send("sim-log", { id, type: "stdout", data: compile.stdout });
-  if (compile.stderr) send("sim-log", { id, type: "stderr", data: compile.stderr });
+    const makeArgs = mode === "cpu" ? ["CPU"] : [];
+    const compile = spawnSync("make", makeArgs, {
+      cwd: backend,
+      encoding: "utf8",
+    });
 
-  if (compile.status !== 0) {
-    throw new Error("Compilation failed. Check logs in Running screen / terminal.");
+    if (compile.stdout) send("sim-log", { id, type: "stdout", data: compile.stdout });
+    if (compile.stderr) send("sim-log", { id, type: "stderr", data: compile.stderr });
+
+    if (compile.status !== 0) {
+      throw new Error("Compilation failed. Check logs in Running screen / terminal.");
+    }
+
+    console.log("Compilation OK");
+  } else {
+    console.log("===== PACKAGED MODE =====");
+    console.log("Using bundled backend from:", backend);
   }
 
-  console.log("Compilation OK");
-
-  const exeName = mode === "cpu" ? "mc_sim_cpu" : "mc_sim";
-  const exePath = path.join(backend, exeName);
-
   if (!fs.existsSync(exePath)) {
-    throw new Error(`Binary not found after compilation: ${exePath}`);
+    throw new Error(`Binary not found: ${exePath}`);
   }
 
   console.log("===== STARTING SIMULATION =====");
@@ -428,7 +448,13 @@ ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
   console.log("Param:", paramPath);
   console.log("Workdir:", workdir);
 
-  const child = spawn(exePath, ["param.txt"], { cwd: workdir });
+  const child = spawn(exePath, ["param.txt"], {
+    cwd: workdir,
+    env: {
+      ...process.env,
+      PATH: `${backend}${path.delimiter}${process.env.PATH || ""}`,
+    },
+  });
 
   running = { id, child };
 
@@ -446,7 +472,15 @@ ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
   });
 
   child.on("error", (err) => {
-    send("sim-done", { id, code: -1, error: err.message, workdir, paramPath, exePath, mode });
+    send("sim-done", {
+      id,
+      code: -1,
+      error: err.message,
+      workdir,
+      paramPath,
+      exePath,
+      mode,
+    });
     running = null;
   });
 

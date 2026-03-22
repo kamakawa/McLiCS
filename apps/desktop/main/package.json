@@ -1,17 +1,68 @@
 {
   "name": "mclist-desktop",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "main.js",
   "type": "commonjs",
-  "scripts": {
-    "start": "electron ."
+  "author": {
+    "name": "Eric Kamakawa",
+    "email": "erickamakawa@hotmail.com"
   },
-  "author": "Eric Kamakawa",
-  "description": "",
-  "devDependencies": {
-    "electron": "^30.0.0"
+  "homepage": "https://github.com/erickamakawa/MClist",
+  "description": "MClist",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "build:renderer": "npm --prefix ../renderer run build",
+    "prepare:packaged-assets": "node ./scripts/prepare-packaged-assets.js",
+    "dist:linux": "npm run build:renderer && npm run prepare:packaged-assets && electron-builder --linux AppImage deb",
+    "dist:dir": "npm run build:renderer && npm run prepare:packaged-assets && electron-builder --dir",
+    "pack": "npm run dist:linux"
   },
   "dependencies": {
     "pdfkit": "^0.17.2"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.mclist.desktop",
+    "productName": "MClist",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/renderer-dist",
+        "to": "renderer-dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asar": true,
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Science",
+      "icon": "build",
+      "maintainer": "Eric Kamakawa <erickamakawa@gmail.com>",
+      "artifactName": "MClist-${version}-${arch}.${ext}"
+    }
   }
 }
