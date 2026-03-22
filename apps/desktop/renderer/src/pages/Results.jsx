@@ -58,6 +58,8 @@ export default function Results() {
   const nav = useNavigate();
   const loc = useLocation();
   const state = loc.state || {};
+  const [directorPreviewImage, setDirectorPreviewImage] = useState("");
+  const [directorPreviewError, setDirectorPreviewError] = useState("");
 
   const { id, code, workdir } = state;
   const ok = Number(code) === 0;
@@ -90,7 +92,7 @@ export default function Results() {
     (async () => {
       try {
         const r = await api.listRunFiles(workdir);
-        const list = r?.files || [];
+        const list = (r?.files || []).map((f) => (typeof f === "string" ? f : f.path));
         setFiles(list);
 
         const poCandidate =
@@ -129,6 +131,53 @@ export default function Results() {
         setTruncated(false);
       }
     })();
+  }, [workdir, selected]);
+
+  useEffect(() => {
+    if (!api || !workdir || !selected || !isDirectorFieldFile(selected)) {
+      setDirectorPreviewImage("");
+      setDirectorPreviewError("");
+      return;
+    }
+
+    let dead = false;
+
+    (async () => {
+      try {
+        const res = await api.renderDirectorPreview(workdir, selected);
+        if (dead) return;
+
+        if (res?.ok && res?.imagePath) {
+          const relPreviewPath = pathBasenameWithPreview(selected);
+
+          const imgRes = await api.readRunFile(
+            workdir,
+            `.mclist_previews/${relPreviewPath}`,
+            8_000_000
+          );
+
+          if (imgRes?.base64) {
+            setDirectorPreviewImage(`data:image/png;base64,${imgRes.base64}`);
+            setDirectorPreviewError("");
+          } else {
+            setDirectorPreviewImage("");
+            setDirectorPreviewError("Preview image could not be loaded.");
+          }
+        } else {
+          setDirectorPreviewImage("");
+          setDirectorPreviewError(res?.error || "Preview generation failed.");
+        }
+      } catch (e) {
+        if (!dead) {
+          setDirectorPreviewImage("");
+          setDirectorPreviewError(String(e));
+        }
+      }
+    })();
+
+    return () => {
+      dead = true;
+    };
   }, [workdir, selected]);
 
   /* ---------- load po.dat ALWAYS (plots tab source) ---------- */
@@ -606,7 +655,27 @@ export default function Results() {
               {selected ? selected : "Select a file"} {truncated ? ` ${t("truncated")}` : ""}
             </div>
 
-            {table ? (
+            {isDirectorFieldFile(selected) ? (
+              <div style={s.filePreviewGrid}>
+                <div style={s.filePreviewVisualCard}>
+                  {directorPreviewImage ? (
+                    <img src={directorPreviewImage} alt="director preview" style={s.filePreviewImage} />
+                  ) : (
+                    <div style={s.filePreviewEmpty}>
+                      {directorPreviewError || (t("noPlotPreview") || "No preview available")}
+                    </div>
+                  )}
+                </div>
+
+                <div style={s.filePreviewData}>
+                  {table ? (
+                    <DataTable table={table} maxRows={220} />
+                  ) : (
+                    <pre style={s.preTall}>{fileText || t("empty")}</pre>
+                  )}
+                </div>
+              </div>
+            ) : table ? (
               <DataTable table={table} maxRows={400} />
             ) : (
               <pre style={s.preTall}>{fileText || t("empty")}</pre>
@@ -1338,6 +1407,17 @@ function fmt(v) {
   return v.toFixed(4);
 }
 
+function isDirectorFieldFile(name) {
+  return /(^|\/)director_field.*\.csv$/i.test(String(name || ""));
+}
+
+function pathBasenameWithPreview(relPath) {
+  return String(relPath || "")
+    .split("/")
+    .pop()
+    .replace(/\.csv$/i, ".png");
+}
+
 /* ================= styles ================= */
 
 const s = {
@@ -1747,5 +1827,41 @@ const s = {
     fontWeight: 900,
     fontSize: 12,
     transition: "transform 140ms ease, box-shadow 140ms ease",
+  },
+
+  filePreviewGrid: {
+    display: "grid",
+    gap: 12,
+  },
+
+  filePreviewVisualCard: {
+    border: "1px solid rgba(29,29,29,0.10)",
+    borderRadius: 16,
+    padding: 10,
+    background: "rgba(245,247,248,0.55)",
+  },
+
+  filePreviewImage: {
+    width: "100%",
+    height: "auto",
+    display: "block",
+    borderRadius: 10,
+  },
+
+  filePreviewEmpty: {
+    minHeight: 220,
+    display: "grid",
+    placeItems: "center",
+    textAlign: "center",
+    border: "1px dashed rgba(29,29,29,0.16)",
+    borderRadius: 12,
+    background: "rgba(255,255,255,0.65)",
+    color: "var(--muted)",
+    fontWeight: 800,
+    padding: 16,
+  },
+
+  filePreviewData: {
+    minHeight: 220,
   },
 };

@@ -87,6 +87,23 @@ function safeInsideReal(parent, child) {
   return !!rel && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
+function pythonExec() {
+  return process.env.PYTHON || "python3";
+}
+
+function previewCacheDir(workdir) {
+  return path.join(workdir, ".mclist_previews");
+}
+
+function previewFilePath(workdir, relPath) {
+  const safe = path.basename(relPath).replace(/\.csv$/i, ".png");
+  return path.join(previewCacheDir(workdir), safe);
+}
+
+function renderScriptPath() {
+  return path.join(__dirname, "scripts", "render_director_preview.py");
+}
+
 /* ================= RECENTS ================= */
 
 const recentsFile = () => path.join(app.getPath("userData"), "mclist_recents.json");
@@ -335,7 +352,22 @@ ipcMain.handle("list-run-files", async (_e, { workdir }) => {
     throw new Error(msg);
   }
 
-  const files = walkFiles(workdir).sort((a, b) => a.localeCompare(b));
+  const relFiles = walkFiles(workdir).sort((a, b) => a.localeCompare(b));
+
+  const files = relFiles.map((relPath) => {
+    const abs = path.join(workdir, relPath);
+    let mtimeMs = 0;
+
+    try {
+      mtimeMs = fs.statSync(abs).mtimeMs;
+    } catch {}
+
+    return {
+      path: relPath,
+      mtimeMs,
+    };
+  });
+
   return { files };
 });
 
@@ -364,21 +396,75 @@ ipcMain.handle("read-run-file", async (_e, { workdir, relPath, maxBytes = 2_000_
   const limit = Math.max(1_000, Number(maxBytes) || 2_000_000);
 
   const fd = fs.openSync(abs, "r");
+    try {
+      const size = Math.min(stat.size, limit);
+      const buf = Buffer.alloc(size);
+      fs.readSync(fd, buf, 0, size, 0);
+
+      // se for imagem, retorna base64
+      if (/\.(png|jpg|jpeg)$/i.test(relPath)) {
+        return {
+          base64: buf.toString("base64"),
+          truncated: stat.size > limit,
+        };
+      }
+
+      const truncated = stat.size > limit;
+      let text = buf.toString("utf8");
+
+      if (truncated) {
+        text += `\n\n--- TRUNCATED: showing first ${size} bytes of ${stat.size} ---\n`;
+      }
+
+      return { text, truncated };
+    } finally {
+      fs.closeSync(fd);
+    }
+});
+
+ipcMain.handle("render-director-preview", async (_event, { workdir, relPath }) => {
   try {
-    const size = Math.min(stat.size, limit);
-    const buf = Buffer.alloc(size);
-    fs.readSync(fd, buf, 0, size, 0);
-
-    const truncated = stat.size > limit;
-    let text = buf.toString("utf8");
-
-    if (truncated) {
-      text += `\n\n--- TRUNCATED: showing first ${size} bytes of ${stat.size} ---\n`;
+    if (!workdir || !relPath) {
+      throw new Error("Missing workdir or relPath.");
     }
 
-    return { text, truncated };
-  } finally {
-    fs.closeSync(fd);
+    const inputPath = path.join(workdir, relPath);
+    if (!fs.existsSync(inputPath)) {
+      throw new Error(`Input file not found: ${inputPath}`);
+    }
+
+    const outDir = previewCacheDir(workdir);
+    ensureDir(outDir);
+
+    const outputPath = previewFilePath(workdir, relPath);
+    const script = renderScriptPath();
+
+    const inputStat = fs.statSync(inputPath);
+    const outputExists = fs.existsSync(outputPath);
+
+    if (outputExists) {
+      const outputStat = fs.statSync(outputPath);
+      if (outputStat.mtimeMs >= inputStat.mtimeMs) {
+        return { ok: true, imagePath: outputPath };
+      }
+    }
+
+    const run = spawnSync(pythonExec(), [script, inputPath, outputPath], {
+      encoding: "utf8",
+      cwd: workdir,
+    });
+
+    if (run.status !== 0) {
+      throw new Error(run.stderr || run.stdout || "Preview renderer failed.");
+    }
+
+    if (!fs.existsSync(outputPath)) {
+      throw new Error("Preview image was not generated.");
+    }
+
+    return { ok: true, imagePath: outputPath };
+  } catch (e) {
+    return { ok: false, error: String(e) };
   }
 });
 
