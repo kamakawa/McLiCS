@@ -117,10 +117,10 @@ O **MClist** é um ambiente completo que permite:
 
 ---
 
-# 👨‍💻 Autor
+# 👨‍💻 Desenvolvedor
 
 **Eric Kamakawa**  
-Engenharia da Computação — UTFPR
+Engenharia de Computação — UTFPR
 
 ---
 
