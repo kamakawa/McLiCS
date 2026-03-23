@@ -166,7 +166,7 @@ export default function Running() {
 
         if (!latest) return;
 
-        const res = await api.renderDirectorPreview(meta.workdir, latest);
+        const res = await api.renderDirectorPreview(meta.workdir, latest, lang);
 
         if (dead) return;
 
@@ -208,7 +208,7 @@ export default function Running() {
       dead = true;
       clearInterval(timer);
     };
-  }, [meta?.workdir]);
+  }, [meta?.workdir, lang]);
 
   const copyLogs = async () => {
     try {
@@ -751,10 +751,9 @@ const s = {
     overflow: "auto",
     borderRadius: 18,
     border: "1px solid var(--line)",
-    background:
-      "radial-gradient(circle at top, rgba(255,255,255,0.05), transparent 40%), #111215",
+    background: "var(--surface-2)",
     padding: 14,
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.02)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
     display: "grid",
     gap: 6,
   },
@@ -763,7 +762,7 @@ const s = {
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
     fontSize: 12,
     lineHeight: 1.45,
-    color: "#dce2ea",
+    color: "var(--text)",
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
   },
@@ -779,13 +778,13 @@ const s = {
   emptyTitle: {
     fontSize: 18,
     fontWeight: 900,
-    color: "#ffffff",
+    color: "var(--text)",
     marginBottom: 8,
   },
 
   emptyText: {
     fontSize: 13,
-    color: "rgba(220,226,234,0.74)",
+    color: "var(--muted)",
     lineHeight: 1.6,
     maxWidth: 520,
     whiteSpace: "pre-wrap",

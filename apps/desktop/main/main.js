@@ -422,8 +422,7 @@ ipcMain.handle("read-run-file", async (_e, { workdir, relPath, maxBytes = 2_000_
     }
 });
 
-ipcMain.handle("render-director-preview", async (_event, { workdir, relPath }) => {
-  try {
+ipcMain.handle("render-director-preview", async (_event, { workdir, relPath, lang }) => {  try {
     if (!workdir || !relPath) {
       throw new Error("Missing workdir or relPath.");
     }
@@ -449,7 +448,7 @@ ipcMain.handle("render-director-preview", async (_event, { workdir, relPath }) =
       }
     }
 
-    const run = spawnSync(pythonExec(), [script, inputPath, outputPath], {
+    const run = spawnSync(pythonExec(), [script, inputPath, outputPath, lang || "en"], {
       encoding: "utf8",
       cwd: workdir,
     });

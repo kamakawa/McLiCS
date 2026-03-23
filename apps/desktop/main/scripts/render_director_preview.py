@@ -10,10 +10,67 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+from matplotlib.tri import Triangulation
 
+matplotlib.rcParams["font.family"] = "sans-serif"
+matplotlib.rcParams["font.sans-serif"] = [
+    "Noto Sans CJK JP",
+    "Noto Sans CJK SC",
+    "Noto Sans JP",
+    "Noto Sans SC",
+    "DejaVu Sans",
+    "Arial Unicode MS",
+]
+matplotlib.rcParams["axes.unicode_minus"] = False
 
 def norm_key(s: str) -> str:
     return "".join(ch.lower() for ch in str(s).strip() if ch.isalnum())
+
+
+def normalize_lang(lang: str) -> str:
+    raw = str(lang or "en").lower()
+    if raw.startswith("pt"):
+        return "pt"
+    if raw.startswith("es"):
+        return "es"
+    if raw.startswith("fr"):
+        return "fr"
+    if raw.startswith("ja"):
+        return "ja"
+    if raw.startswith("zh"):
+        return "zh"
+    return "en"
+
+
+def tr(lang: str):
+    l = normalize_lang(lang)
+    data = {
+        "pt": {
+            "title": "Parâmetro de ordem S",
+            "cbar": "Parâmetro de ordem S",
+        },
+        "en": {
+            "title": "Order parameter S",
+            "cbar": "Order parameter S",
+        },
+        "es": {
+            "title": "Parámetro de orden S",
+            "cbar": "Parámetro de orden S",
+        },
+        "fr": {
+            "title": "Paramètre d’ordre S",
+            "cbar": "Paramètre d’ordre S",
+        },
+        "ja": {
+            "title": "秩序パラメータ S",
+            "cbar": "秩序パラメータ S",
+        },
+        "zh": {
+            "title": "序参量 S",
+            "cbar": "序参量 S",
+        },
+    }
+    return data.get(l, data["en"])
 
 
 def read_rows(csv_path):
@@ -44,15 +101,19 @@ def read_rows(csv_path):
             except Exception:
                 continue
 
-            # mesma ideia do renderize_x.py: manter material útil
             if not (1.0 <= pt <= 3.0):
                 continue
 
             rows.append(
                 {
-                    "x": x, "y": y, "z": z,
-                    "nx": nx, "ny": ny, "nz": nz,
-                    "S": S, "pt": pt,
+                    "x": x,
+                    "y": y,
+                    "z": z,
+                    "nx": nx,
+                    "ny": ny,
+                    "nz": nz,
+                    "S": S,
+                    "pt": pt,
                 }
             )
 
@@ -76,24 +137,22 @@ def choose_plane(rows):
     ys = unique_sorted(r["y"] for r in rows)
     zs = unique_sorted(r["z"] for r in rows)
 
-    # Para ficar alinhado com o renderize_x.py, priorizamos visão ao longo de x:
-    # plano YZ em uma fatia x = constante.
-    if len(xs) > 1 and len(ys) > 1 and len(zs) > 1:
-        return {
-            "plane": "YZ",
-            "slice_axis": "x",
-            "slice_value": median_value(r["x"] for r in rows),
-            "hx": "y",
-            "hy": "z",
-            "vx": "ny",
-            "vy": "nz",
-        }
-
     if len(zs) == 1:
         return {
             "plane": "XY",
             "slice_axis": "z",
             "slice_value": zs[0],
+            "hx": "x",
+            "hy": "y",
+            "vx": "nx",
+            "vy": "ny",
+        }
+
+    if len(xs) > 1 and len(ys) > 1 and len(zs) > 1:
+        return {
+            "plane": "XY",
+            "slice_axis": "z",
+            "slice_value": median_value(r["z"] for r in rows),
             "hx": "x",
             "hy": "y",
             "vx": "nx",
@@ -134,7 +193,7 @@ def nearest_slice_rows(rows, axis, target):
 def average_duplicates(rows, hx, hy, vx, vy):
     grouped = defaultdict(list)
     for r in rows:
-      grouped[(r[hx], r[hy])].append(r)
+        grouped[(r[hx], r[hy])].append(r)
 
     out = []
     for (px, py), items in grouped.items():
@@ -150,16 +209,19 @@ def average_duplicates(rows, hx, hy, vx, vy):
     return out
 
 
-def build_segments(rows, hx, hy, vx, vy):
+def build_segments(rows, hx, hy, vx, vy, density_factor=1):
     xs = sorted(set(r[hx] for r in rows))
     ys = sorted(set(r[hy] for r in rows))
 
     dx = min([abs(xs[i] - xs[i - 1]) for i in range(1, len(xs))], default=1.0)
     dy = min([abs(ys[i] - ys[i - 1]) for i in range(1, len(ys))], default=1.0)
-    L = 0.65 * min(dx, dy)
+    L = 0.90 * min(dx, dy)
 
     segs = []
-    for r in rows:
+    for i, r in enumerate(rows):
+        if density_factor > 1 and i % density_factor != 0:
+            continue
+
         ux = r[vx]
         uy = r[vy]
         n = math.hypot(ux, uy)
@@ -173,16 +235,30 @@ def build_segments(rows, hx, hy, vx, vy):
         x2 = r[hx] + 0.5 * L * ux
         y2 = r[hy] + 0.5 * L * uy
         segs.append([(x1, y1), (x2, y2)])
+
     return segs
+
+
+def choose_density_factor(rows):
+    n = len(rows)
+    if n <= 4000:
+        return 1
+    if n <= 9000:
+        return 2
+    if n <= 16000:
+        return 3
+    return 4
 
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: render_director_preview.py input.csv output.png", file=sys.stderr)
+        print("Usage: render_director_preview.py input.csv output.png [lang]", file=sys.stderr)
         sys.exit(1)
 
     input_csv = sys.argv[1]
     output_png = sys.argv[2]
+    lang = sys.argv[3] if len(sys.argv) >= 4 else "en"
+    txt = tr(lang)
 
     rows = read_rows(input_csv)
     plane_info = choose_plane(rows)
@@ -198,39 +274,67 @@ def main():
 
     rows2 = average_duplicates(slice_rows, hx, hy, vx, vy)
 
-    X = np.array([r[hx] for r in rows2])
-    Y = np.array([r[hy] for r in rows2])
-    S = np.array([r["S"] for r in rows2])
+    X = np.array([r[hx] for r in rows2], dtype=float)
+    Y = np.array([r[hy] for r in rows2], dtype=float)
+    S = np.array([r["S"] for r in rows2], dtype=float)
 
-    fig, ax = plt.subplots(figsize=(9.2, 5.2), dpi=180)
-    fig.patch.set_facecolor("#e6e6e6")
-    ax.set_facecolor("#e6e6e6")
+    density_factor = choose_density_factor(rows2)
+    segs = build_segments(rows2, hx, hy, vx, vy, density_factor=density_factor)
 
-    tri = ax.tricontourf(X, Y, S, levels=120, cmap="inferno")
-    cbar = fig.colorbar(tri, ax=ax, fraction=0.046, pad=0.03)
-    cbar.set_label("Parâmetro de ordem S", fontsize=9)
-    cbar.ax.tick_params(labelsize=8)
+    fig, ax = plt.subplots(figsize=(7.3, 6.0), dpi=180)
+    bg = "#e6e6e6"
+    fig.patch.set_facecolor(bg)
+    ax.set_facecolor(bg)
 
-    segs = build_segments(rows2, hx, hy, vx, vy)
+    tri = Triangulation(X, Y)
+
+    contour = ax.tricontourf(
+        tri,
+        S,
+        levels=140,
+        cmap="inferno",
+        vmin=max(0.0, np.nanmin(S)),
+        vmax=min(1.0, np.nanmax(S)) if np.nanmax(S) <= 1.2 else np.nanmax(S),
+    )
+
     if segs:
-        lc = LineCollection(segs, colors="black", linewidths=0.42, alpha=0.86)
+        lc = LineCollection(
+            segs,
+            colors="black",
+            linewidths=0.36,
+            alpha=0.90,
+            capstyle="round",
+            joinstyle="round",
+        )
         ax.add_collection(lc)
+
+    cbar = fig.colorbar(contour, ax=ax, fraction=0.050, pad=0.045)
+    cbar.set_label(txt["cbar"], fontsize=9)
+    cbar.ax.tick_params(labelsize=8)
 
     ax.set_aspect("equal", adjustable="box")
     ax.set_xlabel(hx, fontsize=9)
     ax.set_ylabel(hy, fontsize=9)
-    ax.set_title(
-        f"Parâmetro de ordem S ({plane_info['plane']}, {plane_info['slice_axis']} = {used_slice:.3f})",
-        fontsize=10
-    )
+    ax.set_title(txt["title"], fontsize=11, pad=8)
     ax.tick_params(labelsize=8)
 
     for spine in ax.spines.values():
-        spine.set_alpha(0.35)
+        spine.set_linewidth(0.8)
+        spine.set_alpha(0.75)
+
+    xpad = 0.02 * (np.max(X) - np.min(X) if np.max(X) != np.min(X) else 1.0)
+    ypad = 0.02 * (np.max(Y) - np.min(Y) if np.max(Y) != np.min(Y) else 1.0)
+    ax.set_xlim(np.min(X) - xpad, np.max(X) + xpad)
+    ax.set_ylim(np.min(Y) - ypad, np.max(Y) + ypad)
 
     plt.tight_layout()
     os.makedirs(os.path.dirname(output_png), exist_ok=True)
-    plt.savefig(output_png, dpi=180, facecolor=fig.get_facecolor(), bbox_inches="tight")
+    plt.savefig(
+        output_png,
+        dpi=180,
+        facecolor=fig.get_facecolor(),
+        bbox_inches="tight"
+    )
     plt.close(fig)
 
 

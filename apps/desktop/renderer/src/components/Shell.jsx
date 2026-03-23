@@ -64,7 +64,7 @@ export default function Shell({ children }) {
                 {theme === "light" ? "☀" : "🌙"}
               </button>
 
-              <select value={lang} onChange={(e) => setLang(e.target.value)} style={s.select} title={ui.t("language")}>
+              <select value={lang} onChange={(e) => setLang(e.target.value)} style={s.select} title={ui.t("language")} className="lang-select">
                 {LANG_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}

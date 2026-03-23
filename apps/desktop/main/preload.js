@@ -22,9 +22,8 @@ contextBridge.exposeInMainWorld("mclist", {
     ipcRenderer.invoke("read-run-file", { workdir, relPath, maxBytes }),
 
   // director preview
-  renderDirectorPreview: (workdir, relPath) =>
-    ipcRenderer.invoke("render-director-preview", { workdir, relPath }),
-
+  renderDirectorPreview: (workdir, relPath, lang) =>
+    ipcRenderer.invoke("render-director-preview", { workdir, relPath, lang }),
   // report (pdf)
   exportReportPDF: (payload) =>
     ipcRenderer.invoke("export-report-pdf", payload),

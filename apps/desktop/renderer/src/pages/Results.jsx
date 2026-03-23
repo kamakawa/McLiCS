@@ -54,7 +54,7 @@ async function capturePlotPngFromDom(domEl) {
 
 export default function Results() {
   const plotRef = useRef(null);
-  const { t } = useUi();
+  const { t, lang } = useUi();
   const nav = useNavigate();
   const loc = useLocation();
   const state = loc.state || {};
@@ -89,10 +89,27 @@ export default function Results() {
   /* ---------- load file list (files tab) + detect po.dat ---------- */
   useEffect(() => {
     if (!api || !workdir) return;
+
     (async () => {
       try {
         const r = await api.listRunFiles(workdir);
-        const list = (r?.files || []).map((f) => (typeof f === "string" ? f : f.path));
+
+        const rawList = (r?.files || []).map((f) =>
+          typeof f === "string" ? f : f.path
+        );
+
+        const list = rawList.filter((f) => {
+          const normalized = String(f || "").replace(/\\/g, "/").toLowerCase();
+
+          // remove previews
+          if (normalized.startsWith(".mclist_previews/")) return false;
+
+          // remove param.txt (em qualquer lugar)
+          if (normalized.endsWith("param.txt")) return false;
+
+          return true;
+        });
+
         setFiles(list);
 
         const poCandidate =
@@ -131,7 +148,7 @@ export default function Results() {
         setTruncated(false);
       }
     })();
-  }, [workdir, selected]);
+  }, [workdir, selected, lang]);
 
   useEffect(() => {
     if (!api || !workdir || !selected || !isDirectorFieldFile(selected)) {
@@ -144,7 +161,7 @@ export default function Results() {
 
     (async () => {
       try {
-        const res = await api.renderDirectorPreview(workdir, selected);
+        const res = await api.renderDirectorPreview(workdir, selected, lang);
         if (dead) return;
 
         if (res?.ok && res?.imagePath) {
@@ -178,7 +195,7 @@ export default function Results() {
     return () => {
       dead = true;
     };
-  }, [workdir, selected]);
+  }, [workdir, selected, lang]);
 
   /* ---------- load po.dat ALWAYS (plots tab source) ---------- */
   useEffect(() => {
@@ -783,7 +800,7 @@ function Tab({ label, active, onClick }) {
 }
 
 function KVTable({ rows, hideValues = false }) {
-  const { t } = useUi();
+  const { t, lang } = useUi();
 
   return (
     <div style={s.tableShell}>
@@ -819,7 +836,7 @@ function KVTable({ rows, hideValues = false }) {
 /* ================== DataTable (NO SORT) ================== */
 
 function DataTable({ table, maxRows = 200 }) {
-  const { t } = useUi();
+  const { t, lang } = useUi();
   const headers =
     table.headers || Array.from({ length: table.cols }, (_, i) => `col${i}`);
 
@@ -1224,7 +1241,7 @@ function LineChart({ curves }) {
 }
 
 function PoDatChart({ table }) {
-  const { t } = useUi();
+  const { t, lang } = useUi();
   const cols = pickPoColumns(table);
   if (!cols) return <div style={s.chartEmpty}>{t("noPlotData")}</div>;
 
