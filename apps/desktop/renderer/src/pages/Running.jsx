@@ -667,8 +667,8 @@ const s = {
   },
 
   infoCardHighlight: {
-    background: "linear-gradient(180deg, rgba(230,57,70,0.08), rgba(255,255,255,0.72))",
-    border: "1px solid rgba(230,57,70,0.18)",
+    background: "linear-gradient(180deg, rgba(230,57,70,0.10), var(--panel))",
+    border: "1px solid rgba(230,57,70,0.20)",
   },
 
   infoLabel: {
@@ -791,12 +791,12 @@ const s = {
   },
 
   imagePreviewWrap: {
-  border: "1px solid var(--line)",
-  borderRadius: 18,
-  overflow: "hidden",
-  background: "rgba(245,247,248,0.65)",
-  padding: 10,
-},
+    border: "1px solid var(--line)",
+    borderRadius: 18,
+    overflow: "hidden",
+    background: "var(--panel-2)",
+    padding: 10,
+  },
 
 imagePreview: {
   display: "block",
@@ -813,7 +813,7 @@ previewEmpty: {
   placeItems: "center",
   textAlign: "center",
   padding: 18,
-  background: "rgba(245,247,248,0.45)",
+  background: "var(--panel-2)",
 },
 
 previewEmptyTitle: {

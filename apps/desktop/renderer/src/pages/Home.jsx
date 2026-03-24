@@ -329,9 +329,9 @@ const s = {
   },
 
   ctrlBtn: {
-    border: "1px solid var(--border)",
-    background: "rgba(255,255,255,0.70)",
-    color: "var(--black)",
+    border: "1px solid var(--line)",
+    background: "var(--surface-2)",
+    color: "var(--text-main)",
     borderRadius: 12,
     padding: "8px 10px",
     cursor: "pointer",
@@ -339,9 +339,9 @@ const s = {
   },
 
   ctrlSelect: {
-    border: "1px solid var(--border)",
-    background: "rgba(255,255,255,0.70)",
-    color: "var(--black)",
+    border: "1px solid var(--line)",
+    background: "var(--surface-2)",
+    color: "var(--text-main)",
     borderRadius: 12,
     padding: "8px 10px",
     cursor: "pointer",
@@ -403,14 +403,14 @@ const s = {
     alignItems: "center",
     gap: 10,
     borderRadius: 18,
-    border: "1px solid rgba(29,29,29,0.10)",
+    border: "1px solid var(--line)",
     padding: "14px 18px",
     cursor: "pointer",
     fontWeight: 950,
     fontSize: 15,
-    color: "var(--black)",
-    background: "rgba(245,247,248,0.88)",
-    boxShadow: "0 12px 26px rgba(29,29,29,0.06)",
+    color: "var(--text-main)",
+    background: "var(--surface-2)",
+    boxShadow: "var(--shadow-soft)",
     transition: "transform 140ms ease, box-shadow 140ms ease",
   },
 
@@ -463,16 +463,16 @@ const s = {
   empty: {
     borderRadius: 18,
     padding: 20,
-    border: "1px dashed rgba(29,29,29,0.18)",
-    color: "rgba(29,29,29,0.72)",
-    background: "rgba(245,247,248,0.35)",
+    border: "1px dashed var(--line)",
+    color: "var(--muted)",
+    background: "var(--panel-2)",
   },
 
   recentRow: {
     width: "100%",
     padding: "12px 14px",
-    border: "1px solid rgba(29,29,29,0.07)",
-    background: "rgba(245,247,248,0.65)",
+    border: "1px solid var(--line)",
+    background: "var(--surface-2)",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -480,7 +480,7 @@ const s = {
     transition: "transform 140ms ease, box-shadow 140ms ease",
     cursor: "pointer",
     textAlign: "left",
-    color: "var(--black)",
+    color: "var(--text-main)",
   },
 
   recentRowHover: {
@@ -514,7 +514,7 @@ const s = {
     borderRadius: 12,
     display: "grid",
     placeItems: "center",
-    background: "rgba(29,29,29,0.06)",
+    background: "var(--panel-2)",
   },
 
   recentName: {
@@ -539,8 +539,8 @@ const s = {
   recentAction: {
     fontSize: 12,
     fontWeight: 900,
-    color: "var(--black)",
-    opacity: 0.75,
+    color: "var(--text-main)",
+    opacity: 0.82,
   },
 
   footerHint: {

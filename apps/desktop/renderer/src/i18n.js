@@ -171,6 +171,8 @@ const dict = {
     orderParameterVsTemperature: "Order parameter S vs Temperature",
     energyVsTemperature: "Energy E vs Temperature",
     tableCsvName: "table.csv",
+    advancedFields: "Advanced fields",
+    required: "required",
 
     currentActivity: "Current activity",
     scientificNote: "Scientific note",
@@ -361,6 +363,7 @@ const dict = {
     orderParameterVsTemperature: "Parâmetro de ordem S vs Temperatura",
     energyVsTemperature: "Energia E vs Temperatura",
     tableCsvName: "tabela.csv",
+    advancedFields: "Campos avançados",
 
     currentActivity: "Atividade atual",
     scientificNote: "Nota científica",
@@ -554,6 +557,7 @@ const dict = {
     orderParameterVsTemperature: "Paramètre d’ordre S vs Température",
     energyVsTemperature: "Énergie E vs Température",
     tableCsvName: "table-fr.csv",
+    advancedFields: "Champs avancés",
 
     currentActivity: "Activité actuelle",
     scientificNote: "Note scientifique",
@@ -744,6 +748,7 @@ const dict = {
     orderParameterVsTemperature: "Parámetro de orden S vs Temperatura",
     energyVsTemperature: "Energía E vs Temperatura",
     tableCsvName: "tabla.csv",
+    advancedFields: "Campos avanzados",
 
     currentActivity: "Actividad actual",
     scientificNote: "Nota científica",
@@ -935,6 +940,7 @@ const dict = {
     orderParameterVsTemperature: "秩序パラメータ S vs 温度",
     energyVsTemperature: "エネルギー E vs 温度",
     tableCsvName: "table-ja.csv",
+    advancedFields: "高度な設定",
 
     currentActivity: "現在のアクティビティ",
     scientificNote: "科学メモ",
@@ -1121,6 +1127,7 @@ const dict = {
     orderParameterVsTemperature: "序参量 S 与温度",
     energyVsTemperature: "能量 E 与温度",
     tableCsvName: "table-zh.csv",
+    advancedFields: "高级设置",
 
     currentActivity: "当前活动",
     scientificNote: "科学说明",

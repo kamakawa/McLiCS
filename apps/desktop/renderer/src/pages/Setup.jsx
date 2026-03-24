@@ -143,7 +143,7 @@ export default function Setup() {
               className="ui-hover"
               onClick={() => setShowAdvanced((v) => !v)}
             >
-              {lang?.startsWith("pt") ? "Campos avançados" : "Advanced fields"}
+              {t("advancedFields")}
             </button>
 
             <button style={s.btnGhost} className="ui-hover" onClick={exportParam}>
@@ -167,7 +167,11 @@ export default function Setup() {
           </div>
         ) : null}
 
-        {showHelpGuide ? <ParameterHelpPanel /> : null}
+        {showHelpGuide ? (
+          <div style={s.helpGuide}>
+            <ParameterHelpPanel />
+          </div>
+        ) : null}
 
         <Section title={t("grid")}>
           <Row cols={3}>
@@ -509,7 +513,7 @@ export default function Setup() {
         </Section>
 
         {showAdvanced ? (
-          <Section title={lang?.startsWith("pt") ? "Campos avançados" : "Advanced fields"}>
+          <Section title={t("advancedFields")}>
             <Row cols={3}>
               <Input
                 label="phi_0"
@@ -649,7 +653,7 @@ export default function Setup() {
       <style>{`
         .ui-hover:hover{
           transform: translateY(-1px);
-          box-shadow: 0 14px 30px rgba(29,29,29,0.10);
+          box-shadow: 0 14px 30px rgba(0,0,0,0.16);
         }
 
         .ui-hover:disabled:hover{
@@ -664,7 +668,7 @@ export default function Setup() {
         }
 
         .setup-input:hover{
-          border-color: rgba(29,29,29,0.18);
+          border-color: var(--line);
         }
 
         @media (max-width: 1180px){
@@ -690,6 +694,45 @@ export default function Setup() {
             grid-template-columns: 1fr !important;
           }
         }
+
+        /* =========================
+              FIX PARAMETER GUIDE DARK
+            ========================= */
+
+            div[style*="isolation: isolate"] * {
+              color: var(--text-main) !important;
+            }
+
+            /* textos secundários */
+            div[style*="isolation: isolate"] p,
+            div[style*="isolation: isolate"] span,
+            div[style*="isolation: isolate"] li {
+              color: var(--muted) !important;
+            }
+
+            /* títulos */
+            div[style*="isolation: isolate"] h1,
+            div[style*="isolation: isolate"] h2,
+            div[style*="isolation: isolate"] h3,
+            div[style*="isolation: isolate"] strong {
+              color: var(--text-main) !important;
+            }
+
+            /* blocos */
+            div[style*="isolation: isolate"] div {
+              background: transparent !important;
+              border-color: var(--border-color) !important;
+            }
+
+            /* código */
+            div[style*="isolation: isolate"] code,
+            div[style*="isolation: isolate"] pre {
+              background: var(--bg-surface-2) !important;
+              color: var(--text-main) !important;
+              border: 1px solid var(--border-color) !important;
+              border-radius: 10px;
+              padding: 6px 8px;
+            }
       `}</style>
     </div>
   );
@@ -1345,5 +1388,19 @@ const s = {
     gap: 6,
     minWidth: 0,
     flexWrap: "wrap",
+  },
+
+  helpGuide: {
+    background: "var(--panel)",
+    border: "1px solid var(--border)",
+    borderRadius: 22,
+    padding: 16,
+    boxShadow: "0 16px 38px rgba(29,29,29,0.06)",
+
+    /* 🔥 ISSO AQUI RESOLVE O DARK */
+    color: "var(--text-main)",
+
+    /* força herança correta */
+    isolation: "isolate",
   },
 };
