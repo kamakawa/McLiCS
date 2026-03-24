@@ -9,7 +9,7 @@ export default function Running() {
   const loc = useLocation();
   const { t, lang } = useUi();
 
-  const { runId, runMeta } = loc.state || {};
+  const { runId, runMeta, setupParams } = loc.state || {};
   const meta = runMeta || {};
 
   const [lines, setLines] = useState([]);
@@ -120,34 +120,68 @@ export default function Running() {
   }, []);
 
   useEffect(() => {
-    if (!api) return;
+  if (!api) return;
 
-    const offLog = api.onSimLog((msg) => {
-      if (runId && msg?.id !== runId) return;
+  const appendLogChunk = (msg) => {
+    if (runId && msg?.id !== runId) return;
 
-      const text = String(msg?.data ?? "").replace(/\r/g, "");
-      const type = String(msg?.type ?? "stdout");
-      const parts = text.split("\n");
+    const text = String(msg?.data ?? "").replace(/\r/g, "");
+    const type = String(msg?.type ?? "stdout");
+    const parts = text.split("\n");
 
-      setLines((prev) => {
-        const next = [...prev];
-        for (const p of parts) {
-          if (p) next.push(`[${type}] ${p}`);
-        }
-        return next.length > 3000 ? next.slice(next.length - 3000) : next;
-      });
+    setLines((prev) => {
+      const next = [...prev];
+      for (const p of parts) {
+        if (p) next.push(`[${type}] ${p}`);
+      }
+      return next.length > 3000 ? next.slice(next.length - 3000) : next;
     });
+  };
 
-    const offDone = api.onSimDone((msg) => {
-      if (runId && msg?.id !== runId) return;
-      nav("/results", { state: msg });
-    });
+  const handleDone = (msg) => {
+    if (runId && msg?.id !== runId) return;
 
-    return () => {
-      offLog?.();
-      offDone?.();
-    };
-  }, [runId, nav]);
+    const failed = !msg?.canceled && (Number(msg?.code) !== 0 || msg?.error);
+
+    if (failed) {
+      const failureText =
+        String(msg?.error || "").trim() ||
+        (lang?.startsWith("pt")
+          ? `O backend encerrou com código ${msg?.code}.`
+          : `The backend exited with code ${msg?.code}.`);
+
+      alert(
+        lang?.startsWith("pt")
+          ? `A simulação falhou.\n\n${failureText}`
+          : `The simulation failed.\n\n${failureText}`
+      );
+
+      nav("/setup", { state: { params: setupParams } });
+      return;
+    }
+
+    nav("/results", { state: msg });
+  };
+
+  const offLog = api.onSimLog(appendLogChunk);
+  const offDone = api.onSimDone(handleDone);
+
+  (async () => {
+    try {
+      const status = await api.getSimStatus?.(runId);
+      if (status?.finished) {
+        handleDone(status);
+      }
+    } catch (e) {
+      console.error("getSimStatus error:", e);
+    }
+  })();
+
+  return () => {
+    offLog?.();
+    offDone?.();
+  };
+}, [runId, nav, lang, setupParams]);
 
   useEffect(() => {
       if (!autoScroll || !boxRef.current) return;

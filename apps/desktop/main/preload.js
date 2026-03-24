@@ -9,9 +9,10 @@ contextBridge.exposeInMainWorld("mclist", {
   exportParamFile: (paramText) =>
     ipcRenderer.invoke("export-param-file", { paramText }),
 
-  // run / cancel
+  // run / cancel / status
   runSim: (payload) => ipcRenderer.invoke("run-sim", payload),
   cancelSim: () => ipcRenderer.invoke("cancel-sim"),
+  getSimStatus: (id) => ipcRenderer.invoke("get-sim-status", { id }),
 
   // run folder + io
   openRunFolder: (workdir) =>
@@ -24,7 +25,8 @@ contextBridge.exposeInMainWorld("mclist", {
   // director preview
   renderDirectorPreview: (workdir, relPath, lang) =>
     ipcRenderer.invoke("render-director-preview", { workdir, relPath, lang }),
-  // report (pdf)
+
+  // report
   exportReportPDF: (payload) =>
     ipcRenderer.invoke("export-report-pdf", payload),
 

@@ -107,7 +107,13 @@ export default function Setup() {
         alert(t("unexpectedRunResponse", { data: JSON.stringify(res, null, 2) }));
         return;
       }
-      nav("/running", { state: { runId: res.id, runMeta: { ...res, mode } } });
+      nav("/running", {
+        state: {
+          runId: res.id,
+          runMeta: { ...res, mode },
+          setupParams: normalizeParams(p),
+        },
+      });
     } catch (e) {
       console.error(e);
       alert(t("runError", { mode: mode.toUpperCase(), error: String(e) }));
