@@ -217,7 +217,7 @@ function defaultParams() {
     dT: "-0.05",
     p0: "0",
     fn: "2",
-    nk: "",
+    nk: "1",
     k11: "1",
     k22: "1.0",
     k33: "1",
@@ -283,6 +283,7 @@ function parseParamText(text) {
   }
 
   params.anchoring = Array.from(anchoringMap.values()).sort((a, b) => a.id - b.id);
+  params.nk = "1";
   return params;
 }
 

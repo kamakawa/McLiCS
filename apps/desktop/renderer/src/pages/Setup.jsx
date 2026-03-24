@@ -24,7 +24,7 @@ const SELECT_OPTIONS = {
     "homeotropic_ghrl",
     "strong_ghrl",
   ],
-  nk: ["1", "2", "3"],
+    nk: ["1"],
 };
 
 const INTEGER_FIELDS = new Set(["Nx", "Ny", "Nz", "MCS", "MCT", "fn"]);
@@ -209,7 +209,7 @@ export default function Setup() {
         </Section>
 
         <Section title={t("monteCarlo")}>
-          <Row cols={4}>
+          <Row cols={3}>
             <Input
               label="MCS"
               helpKey="MCS"
@@ -233,16 +233,6 @@ export default function Setup() {
               onChange={(v) => setField("fn", v)}
               compact
               error={validation.fieldErrors.fn}
-            />
-            <SelectField
-              label="nk"
-              helpKey="nk"
-              value={p.nk}
-              onChange={(v) => setField("nk", v)}
-              options={SELECT_OPTIONS.nk}
-              placeholder={t("optional")}
-              error={validation.fieldErrors.nk}
-              compact
             />
           </Row>
         </Section>
@@ -900,7 +890,7 @@ function buildParamTxt(p) {
   lines.push("");
 
   push(lines, "fn", p.fn);
-  push(lines, "nk", p.nk);
+  push(lines, "nk", "1");
 
   lines.push("");
 
@@ -961,6 +951,8 @@ function buildParamTxt(p) {
 function normalizeParams(raw) {
   const base = defaultParams();
   const p = { ...base, ...(raw || {}) };
+
+  p.nk = "1";
 
   if (!Array.isArray(p.anchoring)) p.anchoring = [];
   p.anchoring = p.anchoring.map((a, i) => ({
@@ -1082,9 +1074,11 @@ function validateParams(p, lang) {
     if (v && !isNumberString(v)) fieldErrors[key] = numErr(key);
   }
 
-  if (clean(p.nk) && !SELECT_OPTIONS.nk.includes(clean(p.nk))) {
-    fieldErrors.nk = optErr("nk", SELECT_OPTIONS.nk);
-  }
+    if (clean(p.nk) !== "1") {
+      fieldErrors.nk = pt
+        ? 'nk deve ser obrigatoriamente "1".'
+        : 'nk must be strictly "1".';
+    }
 
   for (const key of ["potential", "ic", "evol", "geometry", "xbound", "ybound", "zbound"]) {
     const options = SELECT_OPTIONS[key];

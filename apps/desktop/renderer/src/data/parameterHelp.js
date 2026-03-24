@@ -187,31 +187,28 @@ const BASE_PARAMS = {
 
   nk: {
     category: "monteCarlo",
-    options: ["1", "2", "3"],
+    options: ["1"],
     texts: {
       en: {
         short: "Neighbourhood kind.",
-        long: "The backend accepts 1, 2 or 3, meaning how many neighbour shells are used in the calculation.",
+        long: "The backend accepts only 1. This parameter is fixed by the application and is not editable by the user.",
       },
       "pt-BR": {
         short: "Tipo de vizinhança.",
-        long: "O backend aceita 1, 2 ou 3, indicando quantas camadas de vizinhos são usadas no cálculo.",
+        long: "O backend aceita apenas 1. Este parâmetro é fixado pela aplicação e não pode ser alterado pelo usuário.",
       },
       es: {
         short: "Tipo de vecindad.",
-        long: "El backend acepta 1, 2 o 3, indicando cuántas capas de vecinos se usan en el cálculo.",
-      },
+        long: "El backend acepta solo 1. Este parámetro queda fijado por la aplicación y no puede ser editado por el usuario.",},
       fr: {
         short: "Type de voisinage.",
-        long: "Le backend accepte 1, 2 ou 3, indiquant combien de couches de voisins sont utilisées dans le calcul.",
-      },
+        long: "Le backend accepte uniquement 1. Ce paramètre est fixé par l’application et ne peut pas être modifié par l’utilisateur.",},
       ja: {
         short: "近傍タイプ。",
-        long: "バックエンドは 1、2、3 を受け付け、計算に使う近傍シェル数を表します。",
-      },
+        long: "バックエンドは 1 のみ受け付けます。このパラメータはアプリケーション側で固定されており、ユーザーは変更できません。",},
       zh: {
         short: "邻域类型。",
-        long: "后端接受 1、2 或 3，表示计算中使用多少层近邻。",
+        long: "后端仅接受 1。该参数由应用程序固定，用户不能修改。",
       },
     },
   },
