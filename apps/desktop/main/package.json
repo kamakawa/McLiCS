@@ -13,10 +13,14 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
+
     "build:renderer": "npm --prefix ../renderer run build",
+
     "prepare:packaged-assets": "node ./scripts/prepare-packaged-assets.js",
+
     "dist:linux": "npm run build:renderer && npm run prepare:packaged-assets && electron-builder --linux AppImage deb",
     "dist:dir": "npm run build:renderer && npm run prepare:packaged-assets && electron-builder --dir",
+
     "pack": "npm run dist:linux"
   },
 

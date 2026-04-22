@@ -7,7 +7,6 @@ const repoRoot = path.resolve(mainDir, "..", "..", "..");
 // ===== ORIGENS =====
 const rendererDist = path.join(repoRoot, "apps", "desktop", "renderer", "dist");
 const backendSource = path.join(repoRoot, "backend", "dist", "linux-x64");
-const scriptsSource = path.join(mainDir, "scripts"); // <- scripts Python
 
 // ===== DESTINOS =====
 const outRenderer = path.join(mainDir, "resources", "renderer-dist");
@@ -58,15 +57,13 @@ function makeExecutable(filePath) {
 function main() {
   console.log("Preparing packaged assets...");
 
-  // limpa tudo
+  // limpa renderer e backend (scripts NÃO!)
   rmrf(outRenderer);
   rmrf(outBackend);
-  rmrf(outScripts);
 
-  // copia tudo
+  // copia renderer e backend
   copyDir(rendererDist, outRenderer);
   copyDir(backendSource, outBackend);
-  copyDir(scriptsSource, outScripts);
 
   // valida renderer
   assertExists(path.join(outRenderer, "index.html"), "renderer index.html");
@@ -78,11 +75,11 @@ function main() {
   assertExists(cpuBin, "CPU backend binary");
   assertExists(gpuBin, "GPU backend binary");
 
-  // valida script python
+  // valida script python (não copia, só verifica!)
   const pyScript = path.join(outScripts, "render_director_preview.py");
   assertExists(pyScript, "Python render script");
 
-  // ===== PERMISSÕES (LINUX) =====
+  // permissões
   makeExecutable(cpuBin);
   makeExecutable(gpuBin);
   makeExecutable(pyScript);
@@ -93,5 +90,4 @@ function main() {
   console.log("Scripts :", outScripts);
 }
 
-// executa
 main();
