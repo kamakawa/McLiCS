@@ -118,7 +118,12 @@ function previewFilePath(workdir, relPath) {
 }
 
 function renderScriptPath() {
-  return path.join(__dirname, "scripts", "render_director_preview.py");
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "scripts", "render_director_preview.py");
+  }
+
+  // DEV (corrigido)
+  return path.join(__dirname, "resources", "scripts", "render_director_preview.py");
 }
 
 /* ================= RECENTS ================= */

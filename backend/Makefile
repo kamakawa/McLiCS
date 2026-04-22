@@ -1,6 +1,8 @@
 PROGRAM_GPU := mc_sim
 PROGRAM_CPU := mc_sim_cpu
 
+OUT_DIR := dist/linux-x64
+
 ########### Gnu:
 COMPILER := g++
 GPUCOMP  := nvcc
@@ -26,12 +28,12 @@ DBGCBJS  := $(patsubst src/%.cu,build/%dbg.cuda.o,${CUDA})
 all: ${PROGRAM_GPU}
 
 # ---------------- GPU build ----------------
-${PROGRAM_GPU}: ${OBJS} ${CBJS}
-	@${GPUCOMP} ${GPUFLAGS} $(filter-out build/simulator.o,${OBJS}) ${CBJS} ${LIB} -o ${PROGRAM_GPU}
+${PROGRAM_GPU}: ${OBJS} ${CBJS} | ${OUT_DIR}
+	@${GPUCOMP} ${GPUFLAGS} $(filter-out build/simulator.o,${OBJS}) ${CBJS} ${LIB} -o ${OUT_DIR}/${PROGRAM_GPU}
 
 # ---------------- CPU build ----------------
-CPU: $(filter-out build/simulatorGPU.o,${OBJS})
-	@${COMPILER} ${FLAGS} $(filter-out build/simulatorGPU.o,${OBJS}) ${LIB} -o ${PROGRAM_CPU}
+CPU: $(filter-out build/simulatorGPU.o,${OBJS}) | ${OUT_DIR}
+	@${COMPILER} ${FLAGS} $(filter-out build/simulatorGPU.o,${OBJS}) ${LIB} -o ${OUT_DIR}/${PROGRAM_CPU}
 
 # -------------- object rules --------------
 ${OBJS}: build/%.o: src/%.cpp ${HEADER} | build
@@ -43,9 +45,15 @@ ${CBJS}: build/%.cuda.o: src/%.cu | build
 build:
 	@mkdir -p build
 
-debug: ${DBGOBJS} ${DBGCBJS}
-	${GPUCOMP} -O0 -g -Xcompiler -fopenmp -lineinfo $(filter-out -O% -fast -static, ${GPUFLAGS}) \
-	$(filter-out build/simulatordbg.o,${DBGOBJS}) ${DBGCBJS} ${LIB} -o ${PROGRAM_GPU}_debug
+${OUT_DIR}:
+	@mkdir -p ${OUT_DIR}
+
+# ---------------- debug ----------------
+debug: ${DBGOBJS} ${DBGCBJS} | ${OUT_DIR}
+	${GPUCOMP} -O0 -g -Xcompiler -fopenmp -lineinfo \
+	$(filter-out -O% -fast -static, ${GPUFLAGS}) \
+	$(filter-out build/simulatordbg.o,${DBGOBJS}) ${DBGCBJS} ${LIB} \
+	-o ${OUT_DIR}/${PROGRAM_GPU}_debug
 
 ${DBGOBJS}: build/%dbg.o: src/%.cpp | build
 	${COMPILER} -O0 -g $(filter-out -O% -fast, ${FLAGS}) -c $< -o $@ ${USECUDA}
@@ -58,7 +66,7 @@ $(patsubst %.o,%dbg.o,${OBJS}): ${HEADER}
 renew: clean all
 
 clean:
-	@rm -f ${PROGRAM_GPU} ${PROGRAM_CPU} ${PROGRAM_GPU}_debug
+	@rm -f ${OUT_DIR}/${PROGRAM_GPU} ${OUT_DIR}/${PROGRAM_CPU} ${OUT_DIR}/${PROGRAM_GPU}_debug
 	@rm -fr build
 	@rm -f *.o
 

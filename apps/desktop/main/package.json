@@ -9,6 +9,7 @@
   },
   "homepage": "https://github.com/erickamakawa/MClist",
   "description": "MClist",
+
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
@@ -18,47 +19,58 @@
     "dist:dir": "npm run build:renderer && npm run prepare:packaged-assets && electron-builder --dir",
     "pack": "npm run dist:linux"
   },
+
   "dependencies": {
     "pdfkit": "^0.17.2"
   },
+
   "devDependencies": {
     "electron": "^30.0.0",
     "electron-builder": "^24.13.3"
   },
+
   "build": {
     "appId": "com.mclist.desktop",
     "productName": "MClist",
+
     "directories": {
       "output": "dist"
     },
+
     "files": [
       "main.js",
       "preload.js",
       "package.json",
       "node_modules/**/*"
     ],
+
     "extraResources": [
       {
         "from": "resources/renderer-dist",
         "to": "renderer-dist",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "resources/backend",
         "to": "backend",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/scripts",
+        "to": "scripts",
+        "filter": ["**/*"]
       }
     ],
+
     "asar": true,
+
+    "asarUnpack": [
+      "backend/**/*",
+      "scripts/**/*"
+    ],
+
     "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
+      "target": ["AppImage", "deb"],
       "category": "Science",
       "icon": "build",
       "maintainer": "Eric Kamakawa <erickamakawa@gmail.com>",
