@@ -253,6 +253,14 @@ export default function Results() {
     return t;
   }, [poText]);
 
+  const hasValidPoData = !!poTable && poTable.rows.length > 0;
+
+  const resultStatus = !ok
+    ? "failed"
+    : hasValidPoData
+    ? "success"
+    : "warning";
+
   /* ---------- Curves for selected file (files/report fallback only) ---------- */
   const curves = useMemo(() => {
     if (!table) return [];
@@ -543,8 +551,21 @@ export default function Results() {
         <div style={s.headerTitleWrap}>
           <div style={s.h1}>
             {t("results")} —{" "}
-            <span style={{ color: ok ? "var(--ok)" : "var(--bad)" }}>
-              {ok ? t("success") : t("failed")}
+            <span
+              style={{
+                color:
+                  resultStatus === "success"
+                    ? "var(--ok)"
+                    : resultStatus === "warning"
+                    ? "#d97706"
+                    : "var(--bad)",
+              }}
+            >
+              {resultStatus === "success"
+                ? t("success")
+                : resultStatus === "warning"
+                ? t("noData") || "No Data"
+                : t("failed")}
             </span>
           </div>
         </div>

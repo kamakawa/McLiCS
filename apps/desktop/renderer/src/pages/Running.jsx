@@ -23,6 +23,7 @@ export default function Running() {
   const [previewError, setPreviewError] = useState("");
 
   const boxRef = useRef(null);
+  const hasFailedRef = useRef(false);
   const startedAt = useMemo(() => Date.now(), []);
 
   const cancel = async () => {
@@ -126,14 +127,41 @@ export default function Running() {
     if (runId && msg?.id !== runId) return;
 
     const text = String(msg?.data ?? "").replace(/\r/g, "");
-    const type = String(msg?.type ?? "stdout");
     const parts = text.split("\n");
 
     setLines((prev) => {
       const next = [...prev];
+
       for (const p of parts) {
-        if (p) next.push(`[${type}] ${p}`);
+        if (!p) continue;
+
+        const lower = p.toLowerCase();
+
+        if (
+          !hasFailedRef.current &&
+          (
+            lower.includes("error") ||
+            lower.includes("failed") ||
+            lower.includes("no device") ||
+            lower.includes("not found")
+          )
+        ) {
+          hasFailedRef.current = true;
+
+          alert(
+            lang?.startsWith("pt")
+              ? "Erro ao executar na GPU. Verifique se sua placa suporta CUDA (NVIDIA)."
+              : "GPU execution failed. Make sure your system supports CUDA (NVIDIA GPU)."
+          );
+
+          nav("/setup", { state: { params: setupParams } });
+
+          return prev;
+        }
+
+        next.push(p);
       }
+
       return next.length > 3000 ? next.slice(next.length - 3000) : next;
     });
   };
@@ -154,6 +182,17 @@ export default function Running() {
         lang?.startsWith("pt")
           ? `A simulação falhou.\n\n${failureText}`
           : `The simulation failed.\n\n${failureText}`
+      );
+
+      nav("/setup", { state: { params: setupParams } });
+      return;
+    }
+
+    if (msg?.error && String(msg.error).toLowerCase().includes("cuda")) {
+      alert(
+        lang?.startsWith("pt")
+          ? "Erro na GPU detectado. Seu sistema pode não suportar CUDA."
+          : "GPU error detected. Your system may not support CUDA."
       );
 
       nav("/setup", { state: { params: setupParams } });
@@ -357,11 +396,21 @@ export default function Running() {
                 <div style={s.emptyText}>{t("noOutputYetText")}</div>
               </div>
             ) : (
-              lines.map((l, i) => (
-                <div key={i} style={s.line}>
-                  {l}
-                </div>
-              ))
+              lines.map((l, i) => {
+                const isError = l.toLowerCase().includes("error");
+
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      ...s.line,
+                      color: isError ? "#f87171" : "var(--text)"
+                    }}
+                  >
+                    {l}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
