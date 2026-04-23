@@ -60,6 +60,7 @@ export default function Results() {
   const state = loc.state || {};
   const [directorPreviewImage, setDirectorPreviewImage] = useState("");
   const [directorPreviewError, setDirectorPreviewError] = useState("");
+  const [plane, setPlane] = useState("z");
 
   const { id, code, workdir } = state;
   const ok = Number(code) === 0;
@@ -148,7 +149,7 @@ export default function Results() {
         setTruncated(false);
       }
     })();
-  }, [workdir, selected, lang]);
+  }, [workdir, selected, lang, plane]);
 
   useEffect(() => {
     if (!api || !workdir || !selected || !isDirectorFieldFile(selected)) {
@@ -161,15 +162,23 @@ export default function Results() {
 
     (async () => {
       try {
-        const res = await api.renderDirectorPreview(workdir, selected, lang);
+        const res = await api.renderDirectorPreview({
+          workdir,
+          relPath: selected,
+          lang,
+          plane
+        });
+
         if (dead) return;
 
         if (res?.ok && res?.imagePath) {
-          const relPreviewPath = pathBasenameWithPreview(selected);
+          const relativePath = res.imagePath
+            .replace(workdir, "")
+            .replace(/^\/+/, "");
 
           const imgRes = await api.readRunFile(
             workdir,
-            `.mclist_previews/${relPreviewPath}`,
+            relativePath,
             8_000_000
           );
 
@@ -195,7 +204,7 @@ export default function Results() {
     return () => {
       dead = true;
     };
-  }, [workdir, selected, lang]);
+  }, [workdir, selected, lang, plane]);
 
   /* ---------- load po.dat ALWAYS (plots tab source) ---------- */
   useEffect(() => {
@@ -697,12 +706,39 @@ export default function Results() {
               <div style={s.filePreviewGrid}>
                 <div style={s.filePreviewVisualCard}>
                   {directorPreviewImage ? (
-                    <img src={directorPreviewImage} alt="director preview" style={s.filePreviewImage} />
-                  ) : (
-                    <div style={s.filePreviewEmpty}>
-                      {directorPreviewError || (t("noPlotPreview") || "No preview available")}
+                  <div>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                      {["x", "y", "z"].map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => setPlane(p)}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: 8,
+                            border: "1px solid #ccc",
+                            background: plane === p ? "#dc2626" : "#ffffff",
+                            color: plane === p ? "#ffffff" : "#000000",
+                            cursor: "pointer",
+                            fontWeight: 800,
+                            transition: "all 0.2s ease",
+                          }}
+                        >
+                          {p.toUpperCase()}
+                        </button>
+                      ))}
                     </div>
-                  )}
+
+                    <img
+                      src={directorPreviewImage}
+                      alt="director preview"
+                      style={s.filePreviewImage}
+                    />
+                  </div>
+                ) : (
+                  <div style={s.filePreviewEmpty}>
+                    {directorPreviewError || (t("noPlotPreview") || "No preview available")}
+                  </div>
+                )}
                 </div>
 
                 <div style={s.filePreviewData}>
