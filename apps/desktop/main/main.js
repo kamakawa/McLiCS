@@ -22,6 +22,7 @@ function createWindow() {
     },
   });
 
+  
   if (app.isPackaged) {
     const indexPath = path.join(process.resourcesPath, "renderer-dist", "index.html");
     mainWindow.loadFile(indexPath);
@@ -445,7 +446,8 @@ ipcMain.handle("read-run-file", async (_e, { workdir, relPath, maxBytes = 2_000_
     }
 });
 
-ipcMain.handle("render-director-preview", async (_event, { workdir, relPath, lang }) => {  try {
+ipcMain.handle("render-director-preview", async (_event, { workdir, relPath, lang, plane }) => {
+  try {
     if (!workdir || !relPath) {
       throw new Error("Missing workdir or relPath.");
     }
@@ -458,33 +460,53 @@ ipcMain.handle("render-director-preview", async (_event, { workdir, relPath, lan
     const outDir = previewCacheDir(workdir);
     ensureDir(outDir);
 
-    const outputPath = previewFilePath(workdir, relPath);
+    // nome base
+    const safeName = path.basename(relPath).replace(/\.csv$/i, "");
+
+    // caminho padrão (compatível com UI)
+    const defaultOutput = previewFilePath(workdir, relPath);
+
+    // caminho alternativo (x, y, z)
+    const outputPathWithPlane = path.join(
+      previewCacheDir(workdir),
+      `${safeName}_${plane || "z"}.png`
+    );
+
+    // escolha final do arquivo
+    const finalOutput =
+      plane && plane !== "z" ? outputPathWithPlane : defaultOutput;
+
     const script = renderScriptPath();
 
     const inputStat = fs.statSync(inputPath);
-    const outputExists = fs.existsSync(outputPath);
+    const outputExists = fs.existsSync(finalOutput);
 
     if (outputExists) {
-      const outputStat = fs.statSync(outputPath);
+      const outputStat = fs.statSync(finalOutput);
       if (outputStat.mtimeMs >= inputStat.mtimeMs) {
-        return { ok: true, imagePath: outputPath };
+        return { ok: true, imagePath: finalOutput };
       }
     }
 
-    const run = spawnSync(pythonExec(), [script, inputPath, outputPath, lang || "en"], {
-      encoding: "utf8",
-      cwd: workdir,
-    });
+    const run = spawnSync(
+      pythonExec(),
+      [script, inputPath, finalOutput, plane || "z"],
+      {
+        encoding: "utf8",
+        cwd: workdir,
+      }
+    );
 
     if (run.status !== 0) {
       throw new Error(run.stderr || run.stdout || "Preview renderer failed.");
     }
 
-    if (!fs.existsSync(outputPath)) {
+    if (!fs.existsSync(finalOutput)) {
       throw new Error("Preview image was not generated.");
     }
 
-    return { ok: true, imagePath: outputPath };
+    return { ok: true, imagePath: finalOutput };
+
   } catch (e) {
     return { ok: false, error: String(e) };
   }

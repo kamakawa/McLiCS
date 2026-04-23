@@ -21,6 +21,7 @@ export default function Running() {
   const [previewFile, setPreviewFile] = useState("");
   const [previewImage, setPreviewImage] = useState("");
   const [previewError, setPreviewError] = useState("");
+  const [plane, setPlane] = useState("z");
 
   const boxRef = useRef(null);
   const hasFailedRef = useRef(false);
@@ -239,20 +240,22 @@ export default function Running() {
 
         if (!latest) return;
 
-        const res = await api.renderDirectorPreview(meta.workdir, latest, lang);
+        const res = await api.renderDirectorPreview({
+          workdir: meta.workdir,
+          relPath: latest,
+          lang,
+          plane
+        });
 
         if (dead) return;
 
         if (res?.ok && res?.imagePath) {
           try {
-            const previewName = latest
-              .split("/")
-              .pop()
-              .replace(/\.csv$/i, ".png");
+            const relativePath = res.imagePath.replace(meta.workdir, "").replace(/^\/+/, "");
 
             const imgRes = await api.readRunFile(
               meta.workdir,
-              `.mclist_previews/${previewName}`,
+              relativePath,
               8_000_000
             );
 
@@ -281,7 +284,7 @@ export default function Running() {
       dead = true;
       clearInterval(timer);
     };
-  }, [meta?.workdir, lang]);
+  }, [meta?.workdir, lang, plane]);
 
   const copyLogs = async () => {
     try {
@@ -419,6 +422,26 @@ export default function Running() {
           <div style={s.consoleHeader}>
             <div>
               <div style={s.consoleTitle}>{previewTitle}</div>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                {["x", "y", "z"].map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPlane(p)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #ccc",
+                      background: plane === p ? "#dc2626" : "#ffffff", // vermelho / branco
+                      color: plane === p ? "#ffffff" : "#000000",      // branco / preto
+                      cursor: "pointer",
+                      fontWeight: 800,
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    {p.toUpperCase()}
+                  </button>
+                ))}
+              </div>
               <div style={s.consoleHint}>
                 {previewFile
                   ? previewFile
