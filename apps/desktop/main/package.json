@@ -45,6 +45,7 @@
       "main.js",
       "preload.js",
       "package.json",
+      "build/icon.png",
       "node_modules/**/*"
     ],
 
