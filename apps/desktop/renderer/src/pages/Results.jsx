@@ -4,7 +4,7 @@ import logoPng from "../assets/logo.png";
 import { useUi } from "../components/Shell.jsx";
 import Summary from "./Summary";
 
-const api = window.mclist;
+const api = window.mclics;
 
 /* ================== helpers: assets / capture ================== */
 
@@ -82,7 +82,7 @@ export default function Results() {
   const [poTruncated, setPoTruncated] = useState(false);
 
   const notesKey = useMemo(
-    () => `mclist_notes_${id || workdir || "unknown"}`,
+    () => `mclics_notes_${id || workdir || "unknown"}`,
     [id, workdir]
   );
   const [notes, setNotes] = useState(() => localStorage.getItem(notesKey) || "");
@@ -103,7 +103,7 @@ export default function Results() {
           const normalized = String(f || "").replace(/\\/g, "/").toLowerCase();
 
           // remove previews
-          if (normalized.startsWith(".mclist_previews/")) return false;
+          if (normalized.startsWith(".mclics_previews/")) return false;
 
           // remove param.txt (em qualquer lugar)
           if (normalized.endsWith("param.txt")) return false;
@@ -532,7 +532,7 @@ export default function Results() {
         <div style={s.brand}>
           <div style={s.dot} />
           <div>
-            <div style={s.brandTitle}>MClist</div>
+            <div style={s.brandTitle}>McLiCS</div>
             <div style={s.brandSub}>{t("appSubtitle")}</div>
           </div>
         </div>
@@ -715,9 +715,9 @@ export default function Results() {
                           style={{
                             padding: "4px 10px",
                             borderRadius: 8,
-                            border: "1px solid #ccc",
-                            background: plane === p ? "#dc2626" : "#ffffff",
-                            color: plane === p ? "#ffffff" : "#000000",
+                            border: plane === p ? "1px solid rgba(230,57,70,0.30)" : "1px solid var(--border-color)",
+                            background: plane === p ? "var(--red)" : "var(--bg-surface-2)",
+                            color: plane === p ? "#ffffff" : "var(--text-main)",
                             cursor: "pointer",
                             fontWeight: 800,
                             transition: "all 0.2s ease",
@@ -1233,7 +1233,7 @@ function LineChart({ curves }) {
   return (
     <div style={{ width: "100%", overflow: "auto" }}>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }}>
-        <rect x="0" y="0" width={W} height={H} rx="14" fill="rgba(0,0,0,0.02)" />
+        <rect x="0" y="0" width={W} height={H} rx="14" fill="var(--bg-surface-2)" />
 
         {Array.from({ length: gridLines + 1 }).map((_, i) => {
           const tt = i / gridLines;
@@ -1241,14 +1241,14 @@ function LineChart({ curves }) {
           const x = pad + tt * (W - pad * 2);
           return (
             <g key={i}>
-              <line x1={pad} y1={y} x2={W - pad} y2={y} stroke="rgba(0,0,0,0.08)" />
-              <line x1={x} y1={pad} x2={x} y2={H - pad} stroke="rgba(0,0,0,0.08)" />
+              <line x1={pad} y1={y} x2={W - pad} y2={y} stroke="var(--border)" />
+              <line x1={x} y1={pad} x2={x} y2={H - pad} stroke="var(--border)" />
             </g>
           );
         })}
 
-        <line x1={pad} y1={H - pad} x2={W - pad} y2={H - pad} stroke="rgba(0,0,0,0.25)" />
-        <line x1={pad} y1={pad} x2={pad} y2={H - pad} stroke="rgba(0,0,0,0.25)" />
+        <line x1={pad} y1={H - pad} x2={W - pad} y2={H - pad} stroke="var(--muted)" />
+        <line x1={pad} y1={pad} x2={pad} y2={H - pad} stroke="var(--muted)" />
 
         {curves.map((c, idx) => {
           const d = c.points
@@ -1256,7 +1256,7 @@ function LineChart({ curves }) {
             .map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`)
             .join(" ");
 
-          const stroke = idx === 0 ? "var(--red)" : "rgba(29,29,29,0.55)";
+          const stroke = idx === 0 ? "var(--red)" : "var(--text-main)";
 
           return (
             <path
@@ -1272,10 +1272,10 @@ function LineChart({ curves }) {
           );
         })}
 
-        <text x={pad} y={pad - 10} fontSize="12" fill="rgba(29,29,29,0.7)" fontWeight="700">
+        <text x={pad} y={pad - 10} fontSize="12" fill="var(--muted)" fontWeight="700">
           y ∈ [{fmt(ymin)} , {fmt(ymax)}]
         </text>
-        <text x={pad} y={H - 10} fontSize="12" fill="rgba(29,29,29,0.7)" fontWeight="700">
+        <text x={pad} y={H - 10} fontSize="12" fill="var(--muted)" fontWeight="700">
           x ∈ [{fmt(xmin)} , {fmt(xmax)}]
         </text>
       </svg>
@@ -1286,7 +1286,7 @@ function LineChart({ curves }) {
             <span
               style={{
                 ...s.legendDot,
-                background: idx === 0 ? "var(--red)" : "rgba(29,29,29,0.55)",
+                background: idx === 0 ? "var(--red)" : "var(--text-main)",
               }}
             />
             {c.name}
@@ -1352,7 +1352,7 @@ function PoDatChart({ table }) {
         xLabel="T"
         yLabel="E"
         series={seriesE}
-        accent="rgba(29,29,29,0.75)"
+        accent="var(--text-main)"
       />
     </div>
   );
@@ -1413,21 +1413,21 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%" }}>
         {/* Grid */}
         {yTicks.map((y, i) => (
-          <line key={i} x1={padL} y1={sy(y)} x2={W - padR} y2={sy(y)} stroke="rgba(0,0,0,0.08)" />
+          <line key={i} x1={padL} y1={sy(y)} x2={W - padR} y2={sy(y)} stroke="var(--border)" />
         ))}
 
         {xTicks.map((x, i) => (
-          <line key={i} x1={sx(x)} y1={padT} x2={sx(x)} y2={H - padB} stroke="rgba(0,0,0,0.08)" />
+          <line key={i} x1={sx(x)} y1={padT} x2={sx(x)} y2={H - padB} stroke="var(--border)" />
         ))}
 
         {/* Axis */}
-        <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="#000" />
-        <line x1={padL} y1={padT} x2={padL} y2={H - padB} stroke="#000" />
+        <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="var(--text-main)" />
+        <line x1={padL} y1={padT} x2={padL} y2={H - padB} stroke="var(--text-main)" />
 
         {/* Ticks + labels */}
         {xTicks.map((x, i) => (
           <g key={i}>
-            <text x={sx(x)} y={H - padB + 18} fontSize="11" textAnchor="middle">
+            <text x={sx(x)} y={H - padB + 18} fontSize="11" textAnchor="middle" fill="var(--muted)">
               {fmt(x)}
             </text>
           </g>
@@ -1435,14 +1435,14 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
 
         {yTicks.map((y, i) => (
           <g key={i}>
-            <text x={padL - 8} y={sy(y)} fontSize="11" textAnchor="end" dominantBaseline="middle">
+            <text x={padL - 8} y={sy(y)} fontSize="11" textAnchor="end" dominantBaseline="middle" fill="var(--muted)">
               {fmt(y)}
             </text>
           </g>
         ))}
 
         {/* Labels */}
-        <text x={(W - padR + padL) / 2} y={H - 10} textAnchor="middle" fontSize="12" fontWeight="700">
+        <text x={(W - padR + padL) / 2} y={H - 10} textAnchor="middle" fontSize="12" fontWeight="700" fill="var(--text-main)">
           {xLabel}
         </text>
 
@@ -1453,6 +1453,7 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
           textAnchor="middle"
           fontSize="12"
           fontWeight="700"
+          fill="var(--text-main)"
         >
           {yLabel}
         </text>
@@ -1518,7 +1519,7 @@ const s = {
 
   btn: {
     border: "1px solid var(--border)",
-    background: "rgba(245,247,248,0.85)",
+    background: "var(--bg-surface-2)",
     color: "var(--black)",
     borderRadius: 14,
     padding: "10px 12px",
@@ -1541,7 +1542,7 @@ const s = {
 
   btnGhost: {
     border: "1px solid var(--border)",
-    background: "rgba(245,247,248,0.70)",
+    background: "var(--bg-surface-2)",
     color: "var(--black)",
     borderRadius: 14,
     padding: "10px 12px",
@@ -1628,8 +1629,8 @@ const s = {
   panelSub: { color: "var(--muted)", fontWeight: 750, fontSize: 12, lineHeight: 1.45 },
 
   fixedSourceBox: {
-    border: "1px solid rgba(29,29,29,0.10)",
-    background: "rgba(245,247,248,0.65)",
+    border: "1px solid var(--border)",
+    background: "var(--bg-surface-2)",
     borderRadius: 14,
     padding: 12,
     display: "grid",
@@ -1667,10 +1668,10 @@ const s = {
   },
 
   chartBox: {
-    border: "1px solid rgba(29,29,29,0.10)",
+    border: "1px solid var(--border)",
     borderRadius: 16,
     padding: 12,
-    background: "rgba(245,247,248,0.55)",
+    background: "var(--bg-surface-2)",
     minHeight: 420,
   },
 
@@ -1691,8 +1692,8 @@ const s = {
     whiteSpace: "pre-wrap",
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
     fontSize: 12,
-    background: "rgba(0,0,0,0.03)",
-    border: "1px solid rgba(29,29,29,0.10)",
+    background: "var(--bg-surface-2)",
+    border: "1px solid var(--border)",
     borderRadius: 14,
     padding: 12,
     maxHeight: 260,
@@ -1704,8 +1705,8 @@ const s = {
     whiteSpace: "pre-wrap",
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
     fontSize: 12,
-    background: "rgba(0,0,0,0.03)",
-    border: "1px solid rgba(29,29,29,0.10)",
+    background: "var(--bg-surface-2)",
+    border: "1px solid var(--border)",
     borderRadius: 14,
     padding: 12,
     height: "66vh",
@@ -1715,8 +1716,8 @@ const s = {
   fileList: { display: "grid", gap: 8, maxHeight: "66vh", overflow: "auto", paddingRight: 4 },
   fileItem: {
     textAlign: "left",
-    border: "1px solid rgba(29,29,29,0.10)",
-    background: "rgba(245,247,248,0.60)",
+    border: "1px solid var(--border)",
+    background: "var(--bg-surface-2)",
     borderRadius: 14,
     padding: "10px 12px",
     cursor: "pointer",
@@ -1735,8 +1736,8 @@ const s = {
   fileTag: { fontSize: 12, fontWeight: 900, color: "var(--muted)" },
 
   textarea: {
-    border: "1px solid rgba(29,29,29,0.12)",
-    background: "rgba(245,247,248,0.45)",
+    border: "1px solid var(--border-color)",
+    background: "var(--bg-surface-2)",
     borderRadius: 16,
     padding: 12,
     outline: "none",
@@ -1748,8 +1749,8 @@ const s = {
   },
 
   tableShell: {
-    border: "1px solid rgba(29,29,29,0.10)",
-    background: "rgba(245,247,248,0.55)",
+    border: "1px solid var(--border)",
+    background: "var(--bg-surface-2)",
     borderRadius: 16,
     overflow: "hidden",
   },
@@ -1760,8 +1761,8 @@ const s = {
     justifyContent: "space-between",
     gap: 10,
     padding: 12,
-    borderBottom: "1px solid rgba(29,29,29,0.08)",
-    background: "rgba(255,255,255,0.75)",
+    borderBottom: "1px solid var(--border)",
+    background: "var(--surface-2)",
     backdropFilter: "blur(6px)",
   },
 
@@ -1769,8 +1770,8 @@ const s = {
   tableToolbarRight: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
 
   tablePill: {
-    border: "1px solid rgba(29,29,29,0.10)",
-    background: "rgba(255,255,255,0.70)",
+    border: "1px solid var(--border)",
+    background: "var(--surface-2)",
     borderRadius: 999,
     padding: "6px 10px",
     fontWeight: 850,
@@ -1778,8 +1779,8 @@ const s = {
   },
 
   tableSearch: {
-    border: "1px solid rgba(29,29,29,0.12)",
-    background: "rgba(255,255,255,0.75)",
+    border: "1px solid var(--border-color)",
+    background: "var(--surface-2)",
     borderRadius: 12,
     padding: "8px 10px",
     outline: "none",
@@ -1789,8 +1790,8 @@ const s = {
   },
 
   tableSelect: {
-    border: "1px solid rgba(29,29,29,0.12)",
-    background: "rgba(255,255,255,0.75)",
+    border: "1px solid var(--border-color)",
+    background: "var(--surface-2)",
     borderRadius: 12,
     padding: "8px 10px",
     outline: "none",
@@ -1806,10 +1807,10 @@ const s = {
 
   reportPreviewBox: {
     marginTop: 10,
-    border: "1px solid rgba(29,29,29,0.10)",
+    border: "1px solid var(--border)",
     borderRadius: 14,
     padding: 10,
-    background: "rgba(255,255,255,0.70)",
+    background: "var(--surface-2)",
   },
 
   muted2: { color: "var(--muted)", fontWeight: 800, fontSize: 12 },
@@ -1826,9 +1827,9 @@ const s = {
     position: "sticky",
     top: 0,
     zIndex: 2,
-    background: "rgba(255,255,255,0.92)",
+    background: "var(--surface-2)",
     backdropFilter: "blur(6px)",
-    borderBottom: "1px solid rgba(29,29,29,0.12)",
+    borderBottom: "1px solid var(--border-color)",
     padding: "10px 10px",
     textAlign: "left",
     fontWeight: 950,
@@ -1838,14 +1839,14 @@ const s = {
 
   td2: {
     padding: "8px 10px",
-    borderBottom: "1px solid rgba(29,29,29,0.06)",
+    borderBottom: "1px solid var(--line)",
     whiteSpace: "nowrap",
   },
 
   thStickyLeft: {
     left: 0,
     zIndex: 3,
-    boxShadow: "6px 0 18px rgba(29,29,29,0.06)",
+    boxShadow: "6px 0 18px var(--line)",
   },
 
   tdStickyLeft: {
@@ -1853,12 +1854,12 @@ const s = {
     left: 0,
     zIndex: 1,
     background: "inherit",
-    boxShadow: "6px 0 18px rgba(29,29,29,0.06)",
+    boxShadow: "6px 0 18px var(--line)",
     fontWeight: 900,
   },
 
-  trEven2: { background: "rgba(255,255,255,0.55)" },
-  trOdd2: { background: "rgba(245,247,248,0.65)" },
+  trEven2: { background: "var(--surface-2)" },
+  trOdd2: { background: "var(--bg-surface-2)" },
 
   tableFooter: {
     display: "flex",
@@ -1866,8 +1867,8 @@ const s = {
     justifyContent: "center",
     gap: 10,
     padding: 12,
-    borderTop: "1px solid rgba(29,29,29,0.08)",
-    background: "rgba(255,255,255,0.70)",
+    borderTop: "1px solid var(--border)",
+    background: "var(--surface-2)",
     backdropFilter: "blur(6px)",
   },
 
@@ -1876,10 +1877,10 @@ const s = {
   poSub: { fontSize: 12, color: "var(--muted)", fontWeight: 750, marginTop: 2 },
 
   bandCard: {
-    border: "1px solid rgba(29,29,29,0.10)",
+    border: "1px solid var(--border)",
     borderRadius: 16,
     padding: 12,
-    background: "rgba(255,255,255,0.65)",
+    background: "var(--surface-2)",
   },
   bandHeader: {
     display: "flex",
@@ -1893,7 +1894,7 @@ const s = {
 
   smallBtn: {
     border: "1px solid var(--border)",
-    background: "rgba(245,247,248,0.85)",
+    background: "var(--bg-surface-2)",
     color: "var(--black)",
     borderRadius: 12,
     padding: "8px 10px",
@@ -1909,10 +1910,10 @@ const s = {
   },
 
   filePreviewVisualCard: {
-    border: "1px solid rgba(29,29,29,0.10)",
+    border: "1px solid var(--border)",
     borderRadius: 16,
     padding: 10,
-    background: "rgba(245,247,248,0.55)",
+    background: "var(--bg-surface-2)",
   },
 
   filePreviewImage: {
@@ -1927,9 +1928,9 @@ const s = {
     display: "grid",
     placeItems: "center",
     textAlign: "center",
-    border: "1px dashed rgba(29,29,29,0.16)",
+    border: "1px dashed var(--border-color)",
     borderRadius: 12,
-    background: "rgba(255,255,255,0.65)",
+    background: "var(--surface-2)",
     color: "var(--muted)",
     fontWeight: 800,
     padding: 16,

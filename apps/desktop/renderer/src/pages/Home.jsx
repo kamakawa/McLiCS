@@ -5,7 +5,7 @@ import logoDark from "../assets/logo-dark.png";
 import { useUi } from "../components/Shell.jsx";
 import { LANG_OPTIONS } from "../i18n.js";
 
-const api = window.mclist;
+const api = window.mclics;
 
 export default function Home() {
   const nav = useNavigate();
@@ -138,7 +138,7 @@ export default function Home() {
             </select>
           </div>
 
-          <img src={currentLogo} alt="MClist" style={s.logo} />
+          <img src={currentLogo} alt="McLiCS" style={s.logo} />
 
           <div style={s.headline}>{t("welcome")}</div>
           <div style={s.sub}>{t("welcomeSub")}</div>

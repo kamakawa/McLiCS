@@ -1,6 +1,6 @@
-# 🧪 MClist — Simulador de Monte Carlo para Cristais Líquidos
+# 🧪 McLiCS — Simulador de Monte Carlo para Cristais Líquidos
 
-O **MClist** é um software científico desenvolvido como parte de uma **Iniciação Científica**, conduzida por **Eric Kamakawa**, sob orientação dos professores doutores:
+O **McLiCS** é um software científico desenvolvido como parte de uma **Iniciação Científica**, conduzida por **Eric Kamakawa**, sob orientação dos professores doutores:
 
 - **Dr. Rafael Zola**
 - **Dr. Rodolfo Teixeira**
@@ -37,7 +37,7 @@ Grandezas analisadas:
 
 # 💻 Sobre o Software
 
-O **MClist** é um ambiente completo que permite:
+O **McLiCS** é um ambiente completo que permite:
 
 - Configurar parâmetros físicos
 - Executar simulações (CPU/GPU)

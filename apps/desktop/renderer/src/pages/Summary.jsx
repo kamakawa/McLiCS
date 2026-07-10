@@ -242,24 +242,24 @@ function MiniChart({ title, data, yKey }) {
 
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%" }}>
         {/* Axis */}
-        <line x1={pad} y1={H - pad} x2={W - pad} y2={H - pad} stroke="#000" />
-        <line x1={pad} y1={pad} x2={pad} y2={H - pad} stroke="#000" />
+        <line x1={pad} y1={H - pad} x2={W - pad} y2={H - pad} stroke="var(--text-main)" />
+        <line x1={pad} y1={pad} x2={pad} y2={H - pad} stroke="var(--text-main)" />
 
         {/* Ticks */}
         {xTicks.map((x, i) => (
-          <text key={i} x={sx(x)} y={H - pad + 15} fontSize="10" textAnchor="middle">
+          <text key={i} x={sx(x)} y={H - pad + 15} fontSize="10" textAnchor="middle" fill="var(--muted)">
             {fmt(x)}
           </text>
         ))}
 
         {yTicks.map((y, i) => (
-          <text key={i} x={pad - 5} y={sy(y)} fontSize="10" textAnchor="end">
+          <text key={i} x={pad - 5} y={sy(y)} fontSize="10" textAnchor="end" fill="var(--muted)">
             {fmt(y)}
           </text>
         ))}
 
         {/* Labels */}
-        <text x={W / 2} y={H - 5} textAnchor="middle" fontSize="11">
+        <text x={W / 2} y={H - 5} textAnchor="middle" fontSize="11" fill="var(--text-main)">
           T
         </text>
 
@@ -269,12 +269,13 @@ function MiniChart({ title, data, yKey }) {
           transform={`rotate(-90 10 ${H / 2})`}
           textAnchor="middle"
           fontSize="11"
+          fill="var(--text-main)"
         >
           {yKey}
         </text>
 
         {/* Line */}
-        <path d={path} stroke="red" fill="none" strokeWidth="2" />
+        <path d={path} stroke="var(--red)" fill="none" strokeWidth="2" />
       </svg>
     </div>
   );
@@ -286,8 +287,8 @@ const s = {
   container: { display: "grid", gap: 16 },
 
   header: {},
-  title: { fontSize: 22, fontWeight: 900 },
-  subtitle: { color: "#666", fontSize: 13 },
+  title: { fontSize: 22, fontWeight: 900, color: "var(--text-main)" },
+  subtitle: { color: "var(--muted)", fontSize: 13 },
 
   grid4: {
     display: "grid",
@@ -303,22 +304,23 @@ const s = {
 
   metric: {
     padding: 12,
-    border: "1px solid #ddd",
+    border: "1px solid var(--border)",
     borderRadius: 12,
-    background: "#fff",
+    background: "var(--panel)",
   },
 
-  metricLabel: { fontSize: 12, color: "#666" },
-  metricValue: { fontSize: 18, fontWeight: 900 },
+  metricLabel: { fontSize: 12, color: "var(--muted)" },
+  metricValue: { fontSize: 18, fontWeight: 900, color: "var(--text-main)" },
 
   card: {
     padding: 14,
-    border: "1px solid #ddd",
+    border: "1px solid var(--border)",
     borderRadius: 14,
-    background: "#fff",
+    background: "var(--panel)",
+    color: "var(--text-main)",
   },
 
-  cardTitle: { fontWeight: 900, marginBottom: 8 },
+  cardTitle: { fontWeight: 900, marginBottom: 8, color: "var(--text-main)" },
 
   list: {
     paddingLeft: 18,
@@ -328,7 +330,7 @@ const s = {
   empty: {
     padding: 20,
     textAlign: "center",
-    color: "#666",
+    color: "var(--muted)",
   },
 };
 

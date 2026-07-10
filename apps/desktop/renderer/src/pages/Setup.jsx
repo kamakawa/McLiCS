@@ -4,7 +4,7 @@ import { useUi } from "../components/Shell.jsx";
 import { ParamHelp, ParameterHelpPanel } from "../data/parameterHelp.jsx";
 import { getHelpUi } from "../data/parameterHelp.js";
 
-const api = window.mclist;
+const api = window.mclics;
 
 const SELECT_OPTIONS = {
   potential: ["ll", "ghrl", "pear"],

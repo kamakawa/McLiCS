@@ -1,5 +1,5 @@
 {
-  "name": "mclist-desktop",
+  "name": "mclics-desktop",
   "version": "1.1.0",
   "main": "main.js",
   "type": "commonjs",
@@ -8,7 +8,7 @@
     "email": "erickamakawa@hotmail.com"
   },
   "homepage": "https://github.com/erickamakawa/MClist",
-  "description": "MClist",
+  "description": "McLiCS",
 
   "scripts": {
     "start": "electron .",
@@ -34,8 +34,8 @@
   },
 
   "build": {
-    "appId": "com.mclist.desktop",
-    "productName": "MClist",
+    "appId": "com.mclics.desktop",
+    "productName": "McLiCS",
 
     "directories": {
       "output": "dist"
@@ -78,7 +78,7 @@
       "category": "Science",
       "icon": "build",
       "maintainer": "Eric Kamakawa <erickamakawa@gmail.com>",
-      "artifactName": "MClist-${version}-${arch}.${ext}"
+      "artifactName": "McLiCS-${version}-${arch}.${ext}"
     }
   }
 }

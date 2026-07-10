@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useUi } from "../components/Shell.jsx";
 
-const api = window.mclist;
+const api = window.mclics;
 
 export default function Running() {
   const nav = useNavigate();
@@ -493,7 +493,7 @@ function InfoCard({ label, value, mono, highlight = false }) {
 
 function formatDisplayRunId(id) {
   if (!id) return "";
-  return `MClist-${id}`;
+  return `McLiCS-${id}`;
 }
 
 function pickLatestDirectorField(files) {
@@ -519,30 +519,30 @@ function directorFieldRank(name) {
 }
 
 function ensureRunningAnimations() {
-  if (document.getElementById("mclist-running-animations")) return;
+  if (document.getElementById("mclics-running-animations")) return;
 
   const style = document.createElement("style");
-  style.id = "mclist-running-animations";
+  style.id = "mclics-running-animations";
   style.innerHTML = `
-    @keyframes mclistPulse {
+    @keyframes mclicsPulse {
       0% { transform: scale(0.95); opacity: 0.55; }
       70% { transform: scale(1.45); opacity: 0; }
       100% { transform: scale(1.55); opacity: 0; }
     }
 
-    @keyframes mclistFloat {
+    @keyframes mclicsFloat {
       0% { transform: translateY(0px); }
       50% { transform: translateY(-2px); }
       100% { transform: translateY(0px); }
     }
 
-    @keyframes mclistGlow {
+    @keyframes mclicsGlow {
       0% { box-shadow: 0 0 0 rgba(230,57,70,0.00); }
       50% { box-shadow: 0 0 24px rgba(230,57,70,0.18); }
       100% { box-shadow: 0 0 0 rgba(230,57,70,0.00); }
     }
 
-    @keyframes mclistFadeSlide {
+    @keyframes mclicsFadeSlide {
       0% { opacity: 0; transform: translateY(8px); }
       100% { opacity: 1; transform: translateY(0); }
     }
@@ -621,7 +621,7 @@ const s = {
     placeItems: "center",
     background: "rgba(230,57,70,0.10)",
     border: "1px solid rgba(230,57,70,0.18)",
-    animation: "mclistGlow 2s ease-in-out infinite",
+    animation: "mclicsGlow 2s ease-in-out infinite",
   },
 
   dotPulseRing: {
@@ -630,7 +630,7 @@ const s = {
     height: 14,
     borderRadius: 999,
     background: "rgba(230,57,70,0.30)",
-    animation: "mclistPulse 1.8s ease-out infinite",
+    animation: "mclicsPulse 1.8s ease-out infinite",
   },
 
   dot: {
@@ -667,7 +667,7 @@ const s = {
     borderRadius: 999,
     background: "var(--surface-2)",
     border: "1px solid var(--line)",
-    animation: "mclistFloat 2.2s ease-in-out infinite",
+    animation: "mclicsFloat 2.2s ease-in-out infinite",
   },
 
   badge: {
@@ -744,7 +744,7 @@ const s = {
     lineHeight: 1.25,
     color: "var(--text)",
     letterSpacing: "-0.03em",
-    animation: "mclistFadeSlide 320ms ease",
+    animation: "mclicsFadeSlide 320ms ease",
   },
 
   dynamicFact: {
@@ -752,7 +752,7 @@ const s = {
     lineHeight: 1.6,
     color: "var(--text)",
     fontWeight: 750,
-    animation: "mclistFadeSlide 320ms ease",
+    animation: "mclicsFadeSlide 320ms ease",
   },
 
   singleInfoWrap: {

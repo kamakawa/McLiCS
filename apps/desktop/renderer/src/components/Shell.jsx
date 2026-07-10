@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, createContext, useContext } from "react";
 import { useLocation } from "react-router-dom";
 import icon from "../assets/icon.png";
+import iconDark from "../assets/icon-dark.png";
 import { LANG_OPTIONS, normalizeLang, translate } from "../i18n.js";
 
 const UiContext = createContext(null);
@@ -48,9 +49,9 @@ export default function Shell({ children }) {
         {!hideHeader && (
           <header style={s.top}>
             <div style={s.brand}>
-              <img src={icon} alt="MClist" style={s.brandIcon} />
+              <img src={theme === "dark" ? iconDark : icon} alt="McLiCS" style={s.brandIcon} />
               <div>
-                <div style={s.title}>MClist</div>
+                <div style={s.title}>McLiCS</div>
                 <div style={s.sub}>{ui.t("appSubtitle")}</div>
               </div>
             </div>
