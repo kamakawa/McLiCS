@@ -17,6 +17,9 @@ export default function Home() {
   const [hoverSecondary, setHoverSecondary] = useState(false);
   const [hoveredRow, setHoveredRow] = useState(null);
   const [openingRecentPath, setOpeningRecentPath] = useState("");
+  const [hoverHero, setHoverHero] = useState(false);
+  const [hoverRecentsPanel, setHoverRecentsPanel] = useState(false);
+  const softBorder = theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(29,29,29,0.06)";
 
   useEffect(() => {
     loadRecents();
@@ -114,28 +117,36 @@ export default function Home() {
   return (
     <div style={s.bg}>
       <div style={s.wrap}>
-        <section style={s.hero}>
+        <section
+          style={{ ...s.hero, borderColor: softBorder, ...(hoverHero ? s.heroHalo : null) }}
+          className="fade-slide-up"
+          onMouseEnter={() => setHoverHero(true)}
+          onMouseLeave={() => setHoverHero(false)}
+        >
           <div style={s.topControls}>
             <button
               style={s.ctrlBtn}
               onClick={() => setTheme(theme === "light" ? "dark" : "light")}
               title={t("toggleTheme")}
             >
-              {theme === "light" ? "☀" : "🌙"}
+              {theme === "light" ? <SunIcon /> : <MoonIcon />}
             </button>
 
-            <select
-              value={lang}
-              onChange={(e) => setLang(e.target.value)}
-              style={s.ctrlSelect}
-              title={t("language")}
-            >
-              {LANG_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <div style={s.selectWrap}>
+              <select
+                value={lang}
+                onChange={(e) => setLang(e.target.value)}
+                style={s.ctrlSelect}
+                title={t("language")}
+              >
+                {LANG_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <span style={s.selectChevron}><ChevronDownIcon /></span>
+            </div>
           </div>
 
           <img src={currentLogo} alt="McLiCS" style={s.logo} />
@@ -147,38 +158,50 @@ export default function Home() {
             <button
               style={{
                 ...s.primaryBtn,
-                transform: hoverPrimary ? "translateY(-3px)" : "translateY(0px)",
+                transform: hoverPrimary ? "translateY(-3px) scale(1.01)" : "translateY(0px) scale(1)",
                 boxShadow: hoverPrimary
-                  ? "0 20px 46px rgba(230,57,70,0.30)"
+                  ? "0 22px 48px rgba(230,57,70,0.32)"
                   : s.primaryBtn.boxShadow,
               }}
               onMouseEnter={() => setHoverPrimary(true)}
               onMouseLeave={() => setHoverPrimary(false)}
               onClick={newProject}
             >
-              <span style={s.btnIcon}>＋</span>
+              <span
+                style={{
+                  ...s.sheen,
+                  transform: hoverPrimary ? "translateX(220%) skewX(-20deg)" : "translateX(-140%) skewX(-20deg)",
+                }}
+              />
+              <span style={s.btnIcon}><PlusIcon /></span>
               <span>{t("newSimulation")}</span>
             </button>
 
             <button
               style={{
                 ...s.secondaryBtn,
-                transform: hoverSecondary ? "translateY(-3px)" : "translateY(0px)",
+                transform: hoverSecondary ? "translateY(-3px) scale(1.01)" : "translateY(0px) scale(1)",
                 boxShadow: hoverSecondary
-                  ? "0 18px 38px rgba(29,29,29,0.14)"
+                  ? "0 18px 40px rgba(29,29,29,0.16)"
                   : s.secondaryBtn.boxShadow,
               }}
               onMouseEnter={() => setHoverSecondary(true)}
               onMouseLeave={() => setHoverSecondary(false)}
               onClick={openProject}
             >
-              <span style={s.btnIconGray}>📂</span>
+              <span style={s.btnIconGray}><FolderOpenIcon /></span>
               <span>{t("openProject")}</span>
             </button>
           </div>
         </section>
 
-        <section style={s.panel}>
+        <section
+          style={{ ...s.panel, borderColor: softBorder, ...(hoverRecentsPanel ? s.panelHalo : null) }}
+          className="fade-slide-up"
+          data-delay="1"
+          onMouseEnter={() => setHoverRecentsPanel(true)}
+          onMouseLeave={() => setHoverRecentsPanel(false)}
+        >
           <div style={s.panelTop}>
             <div>
               <div style={s.panelTitle}>{t("recentProjects")}</div>
@@ -224,7 +247,9 @@ export default function Home() {
                   }
                 >
                   <div style={s.recentLeft}>
-                    <div style={s.recentIcon}>📁</div>
+                    <div style={{ ...s.recentIcon, ...(isHovered ? s.recentIconHover : null) }}>
+                      <FolderIcon hovered={isHovered} />
+                    </div>
                     <div style={{ minWidth: 0 }}>
                       <div style={s.recentName}>{r.name}</div>
                       <div style={s.recentPath}>{r.short}</div>
@@ -249,9 +274,59 @@ export default function Home() {
           </div>
         </section>
 
-        <div style={s.footerHint}>{t("homeTip")}</div>
+        <div style={s.footerHint} className="fade-slide-up" data-delay="2">{t("homeTip")}</div>
       </div>
     </div>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="12" r="4.2" />
+      <path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M20.8 14.3a8.6 8.6 0 0 1-10.6-11 8.9 8.9 0 1 0 10.6 11Z" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+      <path d="M12 4v16M4 12h16" />
+    </svg>
+  );
+}
+
+function FolderOpenIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7.5a1.5 1.5 0 0 1 1.5-1.5H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v.5H6.2a1.5 1.5 0 0 0-1.45 1.13L3 18V7.5Z" />
+      <path d="M3 18l1.75-7.37A1.5 1.5 0 0 1 6.2 9.5H21l-2.15 7.63A1.5 1.5 0 0 1 17.4 18H3Z" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function FolderIcon({ hovered }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill={hovered ? "var(--red)" : "currentColor"} style={{ transition: "fill 200ms ease" }}>
+      <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-11Z" />
+    </svg>
   );
 }
 
@@ -300,7 +375,10 @@ const s = {
     display: "grid",
     placeItems: "center",
     padding: "40px",
-    background: "var(--bg)",
+    background:
+      "radial-gradient(1100px 560px at 50% -8%, rgba(230,57,70,0.08), transparent 60%), " +
+      "radial-gradient(900px 520px at 88% 108%, rgba(230,57,70,0.05), transparent 60%), " +
+      "var(--bg)",
   },
 
   wrap: {
@@ -317,6 +395,12 @@ const s = {
     boxShadow: "var(--shadow)",
     padding: "34px 34px 28px",
     textAlign: "center",
+    transition: "box-shadow 350ms ease, border-color 350ms ease",
+  },
+
+  heroHalo: {
+    borderColor: "rgba(230,57,70,0.22)",
+    boxShadow: "var(--shadow), 0 0 0 1px rgba(230,57,70,0.14), 0 0 50px 8px rgba(230,57,70,0.12)",
   },
 
   topControls: {
@@ -329,23 +413,52 @@ const s = {
   },
 
   ctrlBtn: {
+    display: "grid",
+    placeItems: "center",
     border: "1px solid var(--line)",
     background: "var(--surface-2)",
+    backdropFilter: "blur(var(--glass-blur))",
+    WebkitBackdropFilter: "blur(var(--glass-blur))",
     color: "var(--text-main)",
     borderRadius: 12,
-    padding: "8px 10px",
+    width: 36,
+    height: 36,
     cursor: "pointer",
     fontWeight: 900,
+    transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms ease, border-color 200ms ease",
+  },
+
+  selectWrap: {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
   },
 
   ctrlSelect: {
     border: "1px solid var(--line)",
     background: "var(--surface-2)",
+    backdropFilter: "blur(var(--glass-blur))",
+    WebkitBackdropFilter: "blur(var(--glass-blur))",
     color: "var(--text-main)",
     borderRadius: 12,
-    padding: "8px 10px",
+    padding: "8px 30px 8px 10px",
     cursor: "pointer",
     fontWeight: 800,
+    appearance: "none",
+    WebkitAppearance: "none",
+    MozAppearance: "none",
+    transition: "border-color 200ms ease",
+  },
+
+  selectChevron: {
+    position: "absolute",
+    right: 10,
+    top: "50%",
+    transform: "translateY(-50%)",
+    pointerEvents: "none",
+    color: "var(--muted)",
+    display: "grid",
+    placeItems: "center",
   },
 
   logo: {
@@ -353,14 +466,14 @@ const s = {
     height: "auto",
     display: "block",
     margin: "0 auto 10px",
-    filter: "drop-shadow(0 14px 22px rgba(29,29,29,0.10))",
+    filter: "drop-shadow(0 16px 26px rgba(29,29,29,0.12))",
   },
 
   headline: {
     marginTop: 10,
     fontSize: 34,
     fontWeight: 950,
-    letterSpacing: -0.6,
+    letterSpacing: -0.8,
     lineHeight: 1.12,
   },
 
@@ -383,6 +496,8 @@ const s = {
   },
 
   primaryBtn: {
+    position: "relative",
+    overflow: "hidden",
     display: "inline-flex",
     alignItems: "center",
     gap: 10,
@@ -393,9 +508,20 @@ const s = {
     fontWeight: 950,
     fontSize: 15,
     color: "white",
-    background: "linear-gradient(180deg, rgba(230,57,70,1), rgba(190,30,44,1))",
+    background: "linear-gradient(165deg, rgba(235,68,80,1), rgba(190,30,44,1))",
     boxShadow: "0 16px 34px rgba(230,57,70,0.22)",
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+  },
+
+  sheen: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "40%",
+    height: "100%",
+    background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent)",
+    transition: "transform 650ms cubic-bezier(0.22, 1, 0.36, 1)",
+    pointerEvents: "none",
   },
 
   secondaryBtn: {
@@ -410,15 +536,17 @@ const s = {
     fontSize: 15,
     color: "var(--text-main)",
     background: "var(--surface-2)",
+    backdropFilter: "blur(var(--glass-blur))",
+    WebkitBackdropFilter: "blur(var(--glass-blur))",
     boxShadow: "var(--shadow-soft)",
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1)",
   },
 
   btnIcon: {
     display: "grid",
     placeItems: "center",
-    width: 20,
-    height: 20,
+    width: 22,
+    height: 22,
     background: "rgba(255,255,255,0.18)",
     borderRadius: 999,
   },
@@ -426,18 +554,25 @@ const s = {
   btnIconGray: {
     display: "grid",
     placeItems: "center",
-    width: 20,
-    height: 20,
+    width: 22,
+    height: 22,
     background: "rgba(29,29,29,0.06)",
     borderRadius: 999,
+    color: "var(--text-main)",
   },
 
   panel: {
     background: "var(--panel)",
     border: "1px solid var(--border)",
-    boxShadow: "0 14px 34px rgba(29,29,29,0.08)",
+    boxShadow: "var(--shadow-soft)",
     padding: "18px 18px",
     borderRadius: 24,
+    transition: "box-shadow 350ms ease, border-color 350ms ease",
+  },
+
+  panelHalo: {
+    borderColor: "rgba(230,57,70,0.22)",
+    boxShadow: "var(--shadow-soft), 0 0 0 1px rgba(230,57,70,0.14), 0 0 46px 8px rgba(230,57,70,0.12)",
   },
 
   panelTop: {
@@ -477,7 +612,7 @@ const s = {
     justifyContent: "space-between",
     alignItems: "center",
     borderRadius: 16,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease",
     cursor: "pointer",
     textAlign: "left",
     color: "var(--text-main)",
@@ -486,6 +621,7 @@ const s = {
   recentRowHover: {
     transform: "translateY(-2px)",
     boxShadow: "0 14px 28px rgba(29,29,29,0.10)",
+    borderColor: "rgba(230,57,70,0.28)",
   },
 
   recentRowLoading: {
@@ -515,6 +651,12 @@ const s = {
     display: "grid",
     placeItems: "center",
     background: "var(--panel-2)",
+    color: "var(--muted)",
+    transition: "background 200ms ease",
+  },
+
+  recentIconHover: {
+    background: "rgba(230,57,70,0.12)",
   },
 
   recentName: {
