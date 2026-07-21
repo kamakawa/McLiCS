@@ -14,6 +14,7 @@
   --muted: rgba(29,29,29,0.68);
 
   --border: rgba(29,29,29,0.10);
+  --border-soft: rgba(29,29,29,0.06);
   --border-color: rgba(29,29,29,0.14);
   --line: rgba(29,29,29,0.12);
 
@@ -43,6 +44,7 @@ html[data-theme="dark"]{
   --muted: rgba(237,242,247,0.74);
 
   --border: rgba(255,255,255,0.08);
+  --border-soft: rgba(255,255,255,0.05);
   --border-color: rgba(255,255,255,0.12);
   --line: rgba(255,255,255,0.14);
 

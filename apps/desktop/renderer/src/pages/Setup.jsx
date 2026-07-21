@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useUi } from "../components/Shell.jsx";
 import { ParamHelp, ParameterHelpPanel } from "../data/parameterHelp.jsx";
 import { getHelpUi } from "../data/parameterHelp.js";
+import { ChevronLeftIcon } from "../components/Icons.jsx";
+import Select from "../components/Select.jsx";
 
 const api = window.mclics;
 
@@ -126,7 +128,8 @@ export default function Setup() {
         <div style={s.header}>
           <div style={s.headerLeft}>
             <button style={s.btnGhost} className="ui-hover" onClick={() => nav("/")}>
-              {`← ${t("back")}`}
+              <span style={s.btnGhostIcon}><ChevronLeftIcon /></span>
+              {t("back")}
             </button>
 
             <div>
@@ -647,9 +650,13 @@ export default function Setup() {
               </div>
 
       <style>{`
+        .ui-hover{
+          transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
         .ui-hover:hover{
           transform: translateY(-1px);
-          box-shadow: 0 14px 30px rgba(0,0,0,0.16);
+          box-shadow: var(--shadow-soft);
         }
 
         .ui-hover:disabled:hover{
@@ -660,7 +667,7 @@ export default function Setup() {
         }
 
         .setup-input{
-          transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+          transition: border-color 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1), transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
         }
 
         .setup-input:hover{
@@ -825,22 +832,15 @@ function SelectField({
         </div>
       </div>
 
-      <select
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          ...(compact ? s.inputCompact : s.input),
-          ...(error ? s.inputError : null),
-        }}
-        className="setup-input"
-      >
-        {placeholder ? <option value="">{placeholder}</option> : null}
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-      </select>
+      <Select
+        value={value}
+        onChange={onChange}
+        options={options}
+        placeholder={placeholder}
+        compact={compact}
+        error={!!error}
+        title={label}
+      />
 
       {error ? <div style={s.fieldError}>{error}</div> : null}
     </label>
@@ -1155,9 +1155,9 @@ const s = {
   container: { width: "100%", maxWidth: 1220, margin: "0 auto", display: "grid", gap: 18 },
   header: {
     background: "var(--panel)",
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     borderRadius: 22,
-    boxShadow: "0 16px 38px rgba(29,29,29,0.08)",
+    boxShadow: "var(--shadow-soft)",
     padding: 18,
     display: "flex",
     alignItems: "center",
@@ -1172,9 +1172,9 @@ const s = {
 
   section: {
     background: "var(--panel)",
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     borderRadius: 22,
-    boxShadow: "0 16px 38px rgba(29,29,29,0.06)",
+    boxShadow: "var(--shadow-soft)",
     padding: 18,
     display: "grid",
     gap: 14,
@@ -1218,7 +1218,7 @@ const s = {
     width: "100%",
     maxWidth: 220,
     minWidth: 0,
-    height: 42,
+    height: 46,
     border: "1px solid var(--border-color)",
     background: "var(--bg-surface-2)",
     color: "var(--text-main)",
@@ -1245,6 +1245,9 @@ const s = {
   },
 
   btnGhost: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
     border: "1px solid var(--border-color)",
     background: "var(--bg-surface-2)",
     color: "var(--text-main)",
@@ -1252,7 +1255,11 @@ const s = {
     padding: "10px 13px",
     cursor: "pointer",
     fontWeight: 900,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
+  },
+  btnGhostIcon: {
+    display: "grid",
+    placeItems: "center",
   },
   btnGhostActive: {
     border: "1px solid rgba(230,57,70,0.22)",
@@ -1266,7 +1273,7 @@ const s = {
     padding: "13px 14px",
     cursor: "pointer",
     fontWeight: 950,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
   },
 
   anchorWrap: { display: "grid", gap: 12 },
@@ -1309,7 +1316,7 @@ const s = {
     cursor: "pointer",
     fontWeight: 850,
     fontSize: 12,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
   },
   smallBtnDanger: {
     border: "1px solid rgba(230,57,70,0.25)",
@@ -1320,7 +1327,7 @@ const s = {
     cursor: "pointer",
     fontWeight: 900,
     fontSize: 12,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
   },
 
   footer: {
@@ -1328,9 +1335,9 @@ const s = {
     bottom: 0,
     zIndex: 5,
     background: "var(--panel)",
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     borderRadius: 22,
-    boxShadow: "0 18px 42px rgba(29,29,29,0.10)",
+    boxShadow: "var(--shadow)",
     padding: 16,
     display: "flex",
     alignItems: "center",
@@ -1350,18 +1357,18 @@ const s = {
     padding: "11px 15px",
     cursor: "pointer",
     fontWeight: 950,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
-    boxShadow: "0 10px 22px rgba(29,29,29,0.06)",
+    transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
+    boxShadow: "var(--shadow-soft)",
   },
   runGPU: {
     border: "1px solid rgba(230,57,70,0.25)",
-    background: "linear-gradient(180deg, rgba(230,57,70,1), rgba(190,30,44,1))",
+    background: "linear-gradient(165deg, rgba(235,68,80,1), rgba(190,30,44,1))",
     color: "white",
     borderRadius: 14,
     padding: "11px 15px",
     cursor: "pointer",
     fontWeight: 950,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
     boxShadow: "0 14px 30px rgba(230,57,70,0.20)",
   },
 
@@ -1392,10 +1399,10 @@ const s = {
 
   helpGuide: {
     background: "var(--panel)",
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     borderRadius: 22,
     padding: 16,
-    boxShadow: "0 16px 38px rgba(29,29,29,0.06)",
+    boxShadow: "var(--shadow-soft)",
 
     /* 🔥 ISSO AQUI RESOLVE O DARK */
     color: "var(--text-main)",

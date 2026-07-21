@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import icon from "../assets/icon.png";
 import iconDark from "../assets/icon-dark.png";
 import { LANG_OPTIONS, normalizeLang, translate } from "../i18n.js";
+import Select from "./Select.jsx";
 
 const UiContext = createContext(null);
 
@@ -65,13 +66,7 @@ export default function Shell({ children }) {
                 {theme === "light" ? "☀" : "🌙"}
               </button>
 
-              <select value={lang} onChange={(e) => setLang(e.target.value)} style={s.select} title={ui.t("language")} className="lang-select">
-                {LANG_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <Select value={lang} onChange={setLang} options={LANG_OPTIONS} size="sm" title={ui.t("language")} />
             </div>
           </header>
         )}
@@ -113,16 +108,6 @@ const s = {
     padding: "8px 10px",
     cursor: "pointer",
     fontWeight: 800,
-  },
-
-  select: {
-    border: "1px solid var(--border)",
-    background: "transparent",
-    color: "var(--black)",
-    borderRadius: 12,
-    padding: "8px 10px",
-    cursor: "pointer",
-    fontWeight: 700,
   },
 
   main: { display: "grid", gap: "var(--gap)" },

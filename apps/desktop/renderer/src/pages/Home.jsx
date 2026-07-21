@@ -4,6 +4,8 @@ import logo from "../assets/logo.png";
 import logoDark from "../assets/logo-dark.png";
 import { useUi } from "../components/Shell.jsx";
 import { LANG_OPTIONS } from "../i18n.js";
+import { SunIcon, MoonIcon, PlusIcon, FolderOpenIcon, FolderIcon } from "../components/Icons.jsx";
+import Select from "../components/Select.jsx";
 
 const api = window.mclics;
 
@@ -19,7 +21,6 @@ export default function Home() {
   const [openingRecentPath, setOpeningRecentPath] = useState("");
   const [hoverHero, setHoverHero] = useState(false);
   const [hoverRecentsPanel, setHoverRecentsPanel] = useState(false);
-  const softBorder = theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(29,29,29,0.06)";
 
   useEffect(() => {
     loadRecents();
@@ -118,7 +119,7 @@ export default function Home() {
     <div style={s.bg}>
       <div style={s.wrap}>
         <section
-          style={{ ...s.hero, borderColor: softBorder, ...(hoverHero ? s.heroHalo : null) }}
+          style={{ ...s.hero, borderColor: "var(--border-soft)", ...(hoverHero ? s.heroHalo : null) }}
           className="fade-slide-up"
           onMouseEnter={() => setHoverHero(true)}
           onMouseLeave={() => setHoverHero(false)}
@@ -132,21 +133,13 @@ export default function Home() {
               {theme === "light" ? <SunIcon /> : <MoonIcon />}
             </button>
 
-            <div style={s.selectWrap}>
-              <select
-                value={lang}
-                onChange={(e) => setLang(e.target.value)}
-                style={s.ctrlSelect}
-                title={t("language")}
-              >
-                {LANG_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <span style={s.selectChevron}><ChevronDownIcon /></span>
-            </div>
+            <Select
+              value={lang}
+              onChange={setLang}
+              options={LANG_OPTIONS}
+              size="sm"
+              title={t("language")}
+            />
           </div>
 
           <img src={currentLogo} alt="McLiCS" style={s.logo} />
@@ -196,7 +189,7 @@ export default function Home() {
         </section>
 
         <section
-          style={{ ...s.panel, borderColor: softBorder, ...(hoverRecentsPanel ? s.panelHalo : null) }}
+          style={{ ...s.panel, borderColor: "var(--border-soft)", ...(hoverRecentsPanel ? s.panelHalo : null) }}
           className="fade-slide-up"
           data-delay="1"
           onMouseEnter={() => setHoverRecentsPanel(true)}
@@ -277,56 +270,6 @@ export default function Home() {
         <div style={s.footerHint} className="fade-slide-up" data-delay="2">{t("homeTip")}</div>
       </div>
     </div>
-  );
-}
-
-function SunIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <circle cx="12" cy="12" r="4.2" />
-      <path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" />
-    </svg>
-  );
-}
-
-function MoonIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M20.8 14.3a8.6 8.6 0 0 1-10.6-11 8.9 8.9 0 1 0 10.6 11Z" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-      <path d="M12 4v16M4 12h16" />
-    </svg>
-  );
-}
-
-function FolderOpenIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 7.5a1.5 1.5 0 0 1 1.5-1.5H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v.5H6.2a1.5 1.5 0 0 0-1.45 1.13L3 18V7.5Z" />
-      <path d="M3 18l1.75-7.37A1.5 1.5 0 0 1 6.2 9.5H21l-2.15 7.63A1.5 1.5 0 0 1 17.4 18H3Z" />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-}
-
-function FolderIcon({ hovered }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill={hovered ? "var(--red)" : "currentColor"} style={{ transition: "fill 200ms ease" }}>
-      <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-11Z" />
-    </svg>
   );
 }
 
@@ -426,39 +369,6 @@ const s = {
     cursor: "pointer",
     fontWeight: 900,
     transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms ease, border-color 200ms ease",
-  },
-
-  selectWrap: {
-    position: "relative",
-    display: "inline-flex",
-    alignItems: "center",
-  },
-
-  ctrlSelect: {
-    border: "1px solid var(--line)",
-    background: "var(--surface-2)",
-    backdropFilter: "blur(var(--glass-blur))",
-    WebkitBackdropFilter: "blur(var(--glass-blur))",
-    color: "var(--text-main)",
-    borderRadius: 12,
-    padding: "8px 30px 8px 10px",
-    cursor: "pointer",
-    fontWeight: 800,
-    appearance: "none",
-    WebkitAppearance: "none",
-    MozAppearance: "none",
-    transition: "border-color 200ms ease",
-  },
-
-  selectChevron: {
-    position: "absolute",
-    right: 10,
-    top: "50%",
-    transform: "translateY(-50%)",
-    pointerEvents: "none",
-    color: "var(--muted)",
-    display: "grid",
-    placeItems: "center",
   },
 
   logo: {
