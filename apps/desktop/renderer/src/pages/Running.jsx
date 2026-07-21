@@ -341,23 +341,24 @@ export default function Running() {
         </div>
 
         <div style={s.actions}>
-          <button style={s.btnGhost} onClick={copyLogs} title={t("copyLogsTitle")}>
+          <button style={s.btnGhost} className="mclics-btn-hover" onClick={copyLogs} title={t("copyLogsTitle")}>
             {t("copyLogs")}
           </button>
 
-          <button style={s.btnGhost} onClick={clearLogs} title={t("clearConsoleTitle")}>
+          <button style={s.btnGhost} className="mclics-btn-hover" onClick={clearLogs} title={t("clearConsoleTitle")}>
             {t("clear")}
           </button>
 
           <button
             style={s.btnGhost}
+            className="mclics-btn-hover"
             onClick={() => setAutoScroll((v) => !v)}
             title={t("autoScrollTitle")}
           >
             {`${t("autoScroll")}: ${autoScroll ? t("on") : t("off")}`}
           </button>
 
-          <button style={s.btnCancel} onClick={cancel} title={t("cancelTitle")}>
+          <button style={s.btnCancel} className="mclics-btn-hover" onClick={cancel} title={t("cancelTitle")}>
             {t("cancel")}
           </button>
         </div>
@@ -387,7 +388,15 @@ export default function Running() {
         <div style={s.consoleCard}>
           <div style={s.consoleHeader}>
             <div>
-              <div style={s.consoleTitle}>{t("console")}</div>
+              <div style={s.consoleTitleRow}>
+                <div style={s.consoleTitle}>{t("console")}</div>
+                {status === "running" ? (
+                  <span style={s.liveWrap}>
+                    <span style={s.liveDot} />
+                    <span style={s.liveLabel}>{t("statusRunning")}</span>
+                  </span>
+                ) : null}
+              </div>
               <div style={s.consoleHint}>{t("runningTip")}</div>
             </div>
           </div>
@@ -407,7 +416,8 @@ export default function Running() {
                     key={i}
                     style={{
                       ...s.line,
-                      color: isError ? "#f87171" : "var(--text)"
+                      color: isError ? "var(--bad)" : "var(--text)",
+                      animation: "mclicsFadeSlide 260ms ease",
                     }}
                   >
                     {l}
@@ -422,20 +432,21 @@ export default function Running() {
           <div style={s.consoleHeader}>
             <div>
               <div style={s.consoleTitle}>{previewTitle}</div>
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <div style={s.planeGroup}>
+                <div
+                  style={{
+                    ...s.planeIndicator,
+                    transform: `translateX(${["x", "y", "z"].indexOf(plane) * 32}px)`,
+                  }}
+                />
                 {["x", "y", "z"].map((p) => (
                   <button
                     key={p}
+                    className="mclics-plane-btn"
                     onClick={() => setPlane(p)}
                     style={{
-                      padding: "4px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #ccc",
-                      background: plane === p ? "#dc2626" : "#ffffff", // vermelho / branco
-                      color: plane === p ? "#ffffff" : "#000000",      // branco / preto
-                      cursor: "pointer",
-                      fontWeight: 800,
-                      transition: "all 0.2s ease",
+                      ...s.planeBtn,
+                      ...(plane === p ? s.planeBtnActiveText : null),
                     }}
                   >
                     {p.toUpperCase()}
@@ -453,7 +464,7 @@ export default function Running() {
           </div>
 
           {previewImage ? (
-            <div style={s.imagePreviewWrap}>
+            <div key={previewImage} style={{ ...s.imagePreviewWrap, animation: "mclicsPreviewPulse 900ms ease-out" }}>
               <img src={previewImage} alt="director preview" style={s.imagePreview} />
             </div>
           ) : (
@@ -546,6 +557,43 @@ function ensureRunningAnimations() {
       0% { opacity: 0; transform: translateY(8px); }
       100% { opacity: 1; transform: translateY(0); }
     }
+
+    @keyframes mclicsBlink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.25; }
+    }
+
+    @keyframes mclicsBadgePulseGreen {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(30,160,70,0); }
+      50% { box-shadow: 0 0 14px 2px rgba(30,160,70,0.35); }
+    }
+
+    @keyframes mclicsBadgePulseCyan {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(0,200,255,0); }
+      50% { box-shadow: 0 0 14px 2px rgba(0,200,255,0.35); }
+    }
+
+    @keyframes mclicsPreviewPulse {
+      0% { box-shadow: 0 0 0 0 rgba(230,57,70,0); border-color: var(--line); }
+      30% { box-shadow: 0 0 26px 4px rgba(230,57,70,0.28); border-color: rgba(230,57,70,0.35); }
+      100% { box-shadow: 0 0 0 0 rgba(230,57,70,0); border-color: var(--line); }
+    }
+
+    .mclics-btn-hover{
+      transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1), border-color 200ms ease;
+    }
+
+    .mclics-btn-hover:hover{
+      transform: translateY(-2px);
+    }
+
+    .mclics-plane-btn{
+      transition: color 200ms ease, opacity 200ms ease;
+    }
+
+    .mclics-plane-btn:hover{
+      opacity: 0.75;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -568,6 +616,11 @@ function badgeStyle(status, accent = false) {
       ? "rgba(0,200,255,0.10)"
       : "var(--surface-2)",
     color: "var(--text)",
+    animation: !accent && status === "running"
+      ? "mclicsBadgePulseGreen 2.2s ease-in-out infinite"
+      : !accent && status === "compiling"
+      ? "mclicsBadgePulseCyan 2.2s ease-in-out infinite"
+      : "none",
   };
 }
 
@@ -575,6 +628,10 @@ const s = {
   page: {
     display: "grid",
     gap: 14,
+    position: "relative",
+    background:
+      "radial-gradient(900px 420px at 12% -10%, rgba(230,57,70,0.05), transparent 60%), " +
+      "radial-gradient(700px 420px at 100% 30%, rgba(230,57,70,0.04), transparent 60%)",
   },
 
   hero: {
@@ -586,7 +643,7 @@ const s = {
     gap: 14,
     padding: 18,
     borderRadius: 24,
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     background: "var(--panel)",
     backdropFilter: "blur(var(--glass-blur))",
     WebkitBackdropFilter: "blur(var(--glass-blur))",
@@ -700,7 +757,7 @@ const s = {
   btnCancel: {
     minHeight: 44,
     border: "1px solid rgba(255,255,255,0.08)",
-    background: "linear-gradient(180deg, #ff4d5d, #d62839)",
+    background: "linear-gradient(165deg, rgba(235,68,80,1), rgba(190,30,44,1))",
     color: "#ffffff",
     borderRadius: 14,
     padding: "0 16px",
@@ -708,6 +765,49 @@ const s = {
     fontWeight: 950,
     boxShadow: "0 14px 30px rgba(214,40,57,0.32)",
     textShadow: "0 1px 0 rgba(0,0,0,0.18)",
+  },
+
+  planeGroup: {
+    position: "relative",
+    display: "inline-flex",
+    marginTop: 8,
+    padding: 4,
+    borderRadius: 12,
+    background: "var(--surface-2)",
+    border: "1px solid var(--line)",
+  },
+
+  planeIndicator: {
+    position: "absolute",
+    top: 4,
+    left: 4,
+    width: 32,
+    height: "calc(100% - 8px)",
+    borderRadius: 8,
+    background: "linear-gradient(165deg, rgba(235,68,80,1), rgba(190,30,44,1))",
+    boxShadow: "0 8px 18px rgba(230,57,70,0.28)",
+    transition: "transform 260ms cubic-bezier(0.22, 1, 0.36, 1)",
+    zIndex: 0,
+  },
+
+  planeBtn: {
+    position: "relative",
+    zIndex: 1,
+    width: 32,
+    height: 26,
+    display: "grid",
+    placeItems: "center",
+    border: "none",
+    background: "transparent",
+    color: "var(--text-main)",
+    cursor: "pointer",
+    fontWeight: 800,
+    fontSize: 12,
+    borderRadius: 8,
+  },
+
+  planeBtnActiveText: {
+    color: "#ffffff",
   },
 
   dynamicGrid: {
@@ -721,7 +821,7 @@ const s = {
     gap: 10,
     padding: 16,
     borderRadius: 20,
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     background: "var(--panel)",
     backdropFilter: "blur(var(--glass-blur))",
     WebkitBackdropFilter: "blur(var(--glass-blur))",
@@ -763,7 +863,7 @@ const s = {
   infoCard: {
     padding: 16,
     borderRadius: 20,
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     background: "var(--panel)",
     backdropFilter: "blur(var(--glass-blur))",
     WebkitBackdropFilter: "blur(var(--glass-blur))",
@@ -807,7 +907,7 @@ const s = {
     minHeight: 520,
     padding: 16,
     borderRadius: 22,
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     background: "var(--panel)",
     backdropFilter: "blur(var(--glass-blur))",
     WebkitBackdropFilter: "blur(var(--glass-blur))",
@@ -820,7 +920,7 @@ const s = {
     minHeight: 520,
     padding: 16,
     borderRadius: 22,
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     background: "var(--panel)",
     boxShadow: "var(--shadow)",
     display: "grid",
@@ -835,11 +935,43 @@ const s = {
     gap: 12,
   },
 
+  consoleTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
+
   consoleTitle: {
     fontSize: 16,
     fontWeight: 950,
     letterSpacing: "-0.02em",
     color: "var(--text)",
+  },
+
+  liveWrap: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "3px 8px",
+    borderRadius: 999,
+    background: "rgba(30,160,70,0.10)",
+    border: "1px solid rgba(30,160,70,0.24)",
+  },
+
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    background: "#1ea046",
+    animation: "mclicsBlink 1.4s ease-in-out infinite",
+  },
+
+  liveLabel: {
+    fontSize: 10,
+    fontWeight: 900,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "#1ea046",
   },
 
   consoleHint: {
@@ -859,7 +991,6 @@ const s = {
     border: "1px solid var(--line)",
     background: "var(--surface-2)",
     padding: 14,
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
     display: "grid",
     gap: 6,
   },

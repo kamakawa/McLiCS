@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import logoPng from "../assets/logo.png";
 import { useUi } from "../components/Shell.jsx";
 import Summary from "./Summary";
+import Select from "../components/Select.jsx";
 
 const api = window.mclics;
 
@@ -62,8 +63,7 @@ export default function Results() {
   const [directorPreviewError, setDirectorPreviewError] = useState("");
   const [plane, setPlane] = useState("z");
 
-  const { id, code, workdir } = state;
-  const ok = Number(code) === 0;
+  const { id, workdir } = state;
 
   const [tab, setTab] = useState("summary"); // summary | plots | files | notes
 
@@ -261,14 +261,6 @@ export default function Results() {
     if (t.cols < 2 || t.rows.length < 2) return null;
     return t;
   }, [poText]);
-
-  const hasValidPoData = !!poTable && poTable.rows.length > 0;
-
-  const resultStatus = !ok
-    ? "failed"
-    : hasValidPoData
-    ? "success"
-    : "warning";
 
   /* ---------- Curves for selected file (files/report fallback only) ---------- */
   const curves = useMemo(() => {
@@ -557,28 +549,6 @@ export default function Results() {
       </div>
 
       <div style={s.headerCard}>
-        <div style={s.headerTitleWrap}>
-          <div style={s.h1}>
-            {t("results")} —{" "}
-            <span
-              style={{
-                color:
-                  resultStatus === "success"
-                    ? "var(--ok)"
-                    : resultStatus === "warning"
-                    ? "#d97706"
-                    : "var(--bad)",
-              }}
-            >
-              {resultStatus === "success"
-                ? t("success")
-                : resultStatus === "warning"
-                ? t("noData") || "No Data"
-                : t("failed")}
-            </span>
-          </div>
-        </div>
-
         <div style={s.tabsCentered}>
           <Tab
             label={t("summary")}
@@ -707,20 +677,21 @@ export default function Results() {
                 <div style={s.filePreviewVisualCard}>
                   {directorPreviewImage ? (
                   <div>
-                    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                    <div style={{ ...s.planeGroup, marginBottom: 10 }}>
+                      <div
+                        style={{
+                          ...s.planeIndicator,
+                          transform: `translateX(${["x", "y", "z"].indexOf(plane) * 32}px)`,
+                        }}
+                      />
                       {["x", "y", "z"].map((p) => (
                         <button
                           key={p}
+                          className="mclics-plane-btn"
                           onClick={() => setPlane(p)}
                           style={{
-                            padding: "4px 10px",
-                            borderRadius: 8,
-                            border: plane === p ? "1px solid rgba(230,57,70,0.30)" : "1px solid var(--border-color)",
-                            background: plane === p ? "var(--red)" : "var(--bg-surface-2)",
-                            color: plane === p ? "#ffffff" : "var(--text-main)",
-                            cursor: "pointer",
-                            fontWeight: 800,
-                            transition: "all 0.2s ease",
+                            ...s.planeBtn,
+                            ...(plane === p ? s.planeBtnActiveText : null),
                           }}
                         >
                           {p.toUpperCase()}
@@ -729,9 +700,10 @@ export default function Results() {
                     </div>
 
                     <img
+                      key={directorPreviewImage}
                       src={directorPreviewImage}
                       alt="director preview"
-                      style={s.filePreviewImage}
+                      style={{ ...s.filePreviewImage, animation: "fadeSlideUp 260ms ease" }}
                     />
                   </div>
                 ) : (
@@ -824,15 +796,24 @@ export default function Results() {
       ) : null}
 
       <style>{`
+        .ui-hover{
+          transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
         .ui-hover:hover{
           transform: translateY(-1px);
-          box-shadow: 0 14px 30px rgba(29,29,29,0.10);
+          box-shadow: var(--shadow-soft);
         }
         .ui-hover:disabled:hover{
           transform:none;
           box-shadow:none;
           cursor:not-allowed;
           opacity:0.6;
+        }
+        .mclics-plane-btn{
+          transition: color 200ms ease, opacity 200ms ease;
+        }
+        .mclics-plane-btn:hover{
+          opacity: 0.75;
         }
       `}</style>
     </div>
@@ -955,15 +936,16 @@ function DataTable({ table, maxRows = 200 }) {
             style={s.tableSearch}
           />
 
-          <select
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            style={s.tableSelect}
-          >
-            <option value={50}>{t("perPage50")}</option>
-            <option value={100}>{t("perPage100")}</option>
-            <option value={200}>{t("perPage200")}</option>
-          </select>
+          <Select
+            value={String(pageSize)}
+            onChange={(v) => setPageSize(Number(v))}
+            size="sm"
+            options={[
+              { value: "50", label: t("perPage50") },
+              { value: "100", label: t("perPage100") },
+              { value: "200", label: t("perPage200") },
+            ]}
+          />
         </div>
 
         <div style={s.tableToolbarRight}>
@@ -1209,10 +1191,27 @@ function parseTable(text) {
 
 /* ================== charts (SVG) ================== */
 
+const CHART_PALETTE = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+  "var(--chart-6)",
+  "var(--chart-7)",
+  "var(--chart-8)",
+];
+
 function LineChart({ curves }) {
   const W = 980;
   const H = 360;
-  const pad = 36;
+  const padL = 50;
+  const padR = 20;
+  const padT = 20;
+  const padB = 34;
+
+  const wrapRef = useRef(null);
+  const [hoverIdx, setHoverIdx] = useState(null);
 
   const all = curves.flatMap((c) => c.points);
   const xs = all.map((p) => p.x).filter((v) => Number.isFinite(v));
@@ -1225,69 +1224,148 @@ function LineChart({ curves }) {
   const ymin = Math.min(...ys);
   const ymax = Math.max(...ys);
 
-  const sx = (x) => pad + ((x - xmin) / (xmax - xmin || 1)) * (W - pad * 2);
-  const sy = (y) => H - pad - ((y - ymin) / (ymax - ymin || 1)) * (H - pad * 2);
+  const sx = (x) => padL + ((x - xmin) / (xmax - xmin || 1)) * (W - padL - padR);
+  const sy = (y) => H - padB - ((y - ymin) / (ymax - ymin || 1)) * (H - padT - padB);
 
   const gridLines = 5;
+  const yTicks = Array.from({ length: gridLines + 1 }, (_, i) => ymin + (i / gridLines) * (ymax - ymin));
+
+  const referenceCurve = curves.reduce((a, b) => (b.points.length > a.points.length ? b : a), curves[0]);
+  const referenceXs = referenceCurve.points.map((p) => p.x).filter(Number.isFinite);
+
+  const handleMove = (e) => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect || !referenceXs.length) return;
+
+    const mx = ((e.clientX - rect.left) / rect.width) * W;
+
+    let nearest = 0;
+    let nearestDist = Infinity;
+    referenceXs.forEach((x, i) => {
+      const d = Math.abs(sx(x) - mx);
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearest = i;
+      }
+    });
+
+    setHoverIdx(nearest);
+  };
+
+  const hoverX = hoverIdx !== null ? referenceXs[hoverIdx] : null;
+  const tooltipLeftPct = hoverX !== null ? (sx(hoverX) / W) * 100 : 0;
+  const tooltipAlignEnd = hoverX !== null ? sx(hoverX) / W > 0.7 : false;
 
   return (
     <div style={{ width: "100%", overflow: "auto" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }}>
-        <rect x="0" y="0" width={W} height={H} rx="14" fill="var(--bg-surface-2)" />
+      <div ref={wrapRef} style={s.bandChartWrap} onMouseMove={handleMove} onMouseLeave={() => setHoverIdx(null)}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+          {/* Grid (horizontal only, recessive) */}
+          {yTicks.map((y, i) => (
+            <line key={i} x1={padL} y1={sy(y)} x2={W - padR} y2={sy(y)} stroke="var(--line)" strokeWidth="1" />
+          ))}
 
-        {Array.from({ length: gridLines + 1 }).map((_, i) => {
-          const tt = i / gridLines;
-          const y = pad + tt * (H - pad * 2);
-          const x = pad + tt * (W - pad * 2);
-          return (
-            <g key={i}>
-              <line x1={pad} y1={y} x2={W - pad} y2={y} stroke="var(--border)" />
-              <line x1={x} y1={pad} x2={x} y2={H - pad} stroke="var(--border)" />
-            </g>
-          );
-        })}
+          {/* Baseline */}
+          <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="var(--line)" strokeWidth="1" />
 
-        <line x1={pad} y1={H - pad} x2={W - pad} y2={H - pad} stroke="var(--muted)" />
-        <line x1={pad} y1={pad} x2={pad} y2={H - pad} stroke="var(--muted)" />
+          {yTicks.map((y, i) => (
+            <text key={i} x={padL - 10} y={sy(y) + 4} fontSize="10" fontWeight="700" textAnchor="end" fill="var(--muted)">
+              {fmt(y)}
+            </text>
+          ))}
 
-        {curves.map((c, idx) => {
-          const d = c.points
-            .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
-            .map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`)
-            .join(" ");
+          {curves.map((c, idx) => {
+            const d = c.points
+              .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+              .map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`)
+              .join(" ");
 
-          const stroke = idx === 0 ? "var(--red)" : "var(--text-main)";
+            const stroke = CHART_PALETTE[idx % CHART_PALETTE.length];
 
-          return (
-            <path
-              key={c.name}
-              d={d}
-              fill="none"
-              stroke={stroke}
-              strokeWidth="2.2"
-              strokeLinejoin="round"
-              strokeLinecap="round"
-              opacity={idx === 0 ? 1 : 0.85}
+            return (
+              <path
+                key={c.name}
+                d={d}
+                fill="none"
+                stroke={stroke}
+                strokeWidth="2"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            );
+          })}
+
+          {/* Crosshair */}
+          {hoverX !== null ? (
+            <line
+              x1={sx(hoverX)}
+              y1={padT}
+              x2={sx(hoverX)}
+              y2={H - padB}
+              stroke="var(--muted)"
+              strokeWidth="1"
+              strokeDasharray="3 3"
+              opacity="0.5"
             />
-          );
-        })}
+          ) : null}
 
-        <text x={pad} y={pad - 10} fontSize="12" fill="var(--muted)" fontWeight="700">
-          y ∈ [{fmt(ymin)} , {fmt(ymax)}]
-        </text>
-        <text x={pad} y={H - 10} fontSize="12" fill="var(--muted)" fontWeight="700">
-          x ∈ [{fmt(xmin)} , {fmt(xmax)}]
-        </text>
-      </svg>
+          {/* Hover markers per series */}
+          {hoverX !== null
+            ? curves.map((c, idx) => {
+                const pt = c.points.find((p) => p.x === hoverX);
+                if (!pt || !Number.isFinite(pt.y)) return null;
+                return (
+                  <circle
+                    key={c.name}
+                    cx={sx(hoverX)}
+                    cy={sy(pt.y)}
+                    r="4.5"
+                    fill={CHART_PALETTE[idx % CHART_PALETTE.length]}
+                    stroke="var(--bg-surface-2)"
+                    strokeWidth="2"
+                  />
+                );
+              })
+            : null}
+        </svg>
+
+        {hoverX !== null ? (
+          <div
+            style={{
+              ...s.chartTooltip,
+              left: `${tooltipLeftPct}%`,
+              top: 0,
+              transform: `translate(${tooltipAlignEnd ? "-100%" : "0%"}, 6px)`,
+            }}
+          >
+            <div style={s.chartTooltipRow}>
+              <span style={s.chartTooltipLabel}>x</span>
+              <span style={s.chartTooltipValue}>{fmt(hoverX)}</span>
+            </div>
+            {curves.map((c, idx) => {
+              const pt = c.points.find((p) => p.x === hoverX);
+              if (!pt || !Number.isFinite(pt.y)) return null;
+              return (
+                <div key={c.name} style={s.chartTooltipRow}>
+                  <span style={s.chartTooltipSeriesLabel}>
+                    <span
+                      style={{ ...s.legendLine, background: CHART_PALETTE[idx % CHART_PALETTE.length] }}
+                    />
+                    <span>{c.name}</span>
+                  </span>
+                  <span style={s.chartTooltipValue}>{fmt(pt.y)}</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
 
       <div style={s.legend}>
         {curves.map((c, idx) => (
           <div key={c.name} style={s.legendItem}>
             <span
-              style={{
-                ...s.legendDot,
-                background: idx === 0 ? "var(--red)" : "var(--text-main)",
-              }}
+              style={{ ...s.legendLine, background: CHART_PALETTE[idx % CHART_PALETTE.length] }}
             />
             {c.name}
           </div>
@@ -1361,10 +1439,16 @@ function PoDatChart({ table }) {
 function BandChart({ title, xLabel, yLabel, series, accent }) {
   const W = 980;
   const H = 320;
-  const padL = 70;
-  const padR = 30;
-  const padT = 40;
-  const padB = 60;
+  const padL = 60;
+  const padR = 24;
+  const padT = 24;
+  const padB = 40;
+
+  const gradientId = useId();
+  const wrapRef = useRef(null);
+  const [hoverIdx, setHoverIdx] = useState(null);
+
+  const clean = series.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
 
   const xs = series.map((p) => p.x).filter(Number.isFinite);
   const ys = series.map((p) => p.y).filter(Number.isFinite);
@@ -1375,19 +1459,18 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
   const xmax = Math.max(...xs);
   const ymin = Math.min(...ys, ...(los.length ? los : ys));
   const ymax = Math.max(...ys, ...(his.length ? his : ys));
+  const yPad = (ymax - ymin || 1) * 0.08;
 
   const sx = (x) => padL + ((x - xmin) / (xmax - xmin || 1)) * (W - padL - padR);
-  const sy = (y) => H - padB - ((y - ymin) / (ymax - ymin || 1)) * (H - padT - padB);
+  const sy = (y) =>
+    H - padB - ((y - (ymin - yPad)) / (ymax - ymin + yPad * 2 || 1)) * (H - padT - padB);
 
   const ticks = 5;
 
   const xTicks = Array.from({ length: ticks }, (_, i) => xmin + (i / (ticks - 1)) * (xmax - xmin));
   const yTicks = Array.from({ length: ticks }, (_, i) => ymin + (i / (ticks - 1)) * (ymax - ymin));
 
-  const lineD = series
-    .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x)} ${sy(p.y)}`)
-    .join(" ");
+  const lineD = clean.map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x)} ${sy(p.y)}`).join(" ");
 
   const bandPtsHi = series.filter((p) => Number.isFinite(p.hi)).map((p) => [sx(p.x), sy(p.hi)]);
   const bandPtsLo = series
@@ -1404,73 +1487,147 @@ function BandChart({ title, xLabel, yLabel, series, accent }) {
         " Z"
       : "";
 
+  const lastPoint = clean[clean.length - 1];
+
+  const handleMove = (e) => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect || !clean.length) return;
+
+    const mx = ((e.clientX - rect.left) / rect.width) * W;
+
+    let nearest = 0;
+    let nearestDist = Infinity;
+    clean.forEach((p, i) => {
+      const d = Math.abs(sx(p.x) - mx);
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearest = i;
+      }
+    });
+
+    setHoverIdx(nearest);
+  };
+
+  const hovered = hoverIdx !== null ? clean[hoverIdx] : null;
+  const hasBand = hovered && Number.isFinite(hovered.lo) && Number.isFinite(hovered.hi);
+  const tooltipLeftPct = hovered ? (sx(hovered.x) / W) * 100 : 0;
+  const tooltipTopPct = hovered ? (sy(hovered.y) / H) * 100 : 0;
+  const tooltipAlignEnd = hovered ? sx(hovered.x) / W > 0.72 : false;
+
   return (
     <div style={s.bandCard}>
       <div style={s.bandHeader}>
         <div style={s.bandTitle}>{title}</div>
       </div>
 
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%" }}>
-        {/* Grid */}
-        {yTicks.map((y, i) => (
-          <line key={i} x1={padL} y1={sy(y)} x2={W - padR} y2={sy(y)} stroke="var(--border)" />
-        ))}
+      <div ref={wrapRef} style={s.bandChartWrap} onMouseMove={handleMove} onMouseLeave={() => setHoverIdx(null)}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block", overflow: "visible" }}>
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={accent} stopOpacity="0.16" />
+              <stop offset="100%" stopColor={accent} stopOpacity="0" />
+            </linearGradient>
+          </defs>
 
-        {xTicks.map((x, i) => (
-          <line key={i} x1={sx(x)} y1={padT} x2={sx(x)} y2={H - padB} stroke="var(--border)" />
-        ))}
+          {/* Grid (horizontal only, recessive) */}
+          {yTicks.map((y, i) => (
+            <line key={i} x1={padL} y1={sy(y)} x2={W - padR} y2={sy(y)} stroke="var(--line)" strokeWidth="1" />
+          ))}
 
-        {/* Axis */}
-        <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="var(--text-main)" />
-        <line x1={padL} y1={padT} x2={padL} y2={H - padB} stroke="var(--text-main)" />
+          {/* Baseline */}
+          <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="var(--line)" strokeWidth="1" />
 
-        {/* Ticks + labels */}
-        {xTicks.map((x, i) => (
-          <g key={i}>
-            <text x={sx(x)} y={H - padB + 18} fontSize="11" textAnchor="middle" fill="var(--muted)">
+          {/* Ticks + labels */}
+          {xTicks.map((x, i) => (
+            <text key={i} x={sx(x)} y={H - padB + 20} fontSize="11" fontWeight="700" textAnchor="middle" fill="var(--muted)">
               {fmt(x)}
             </text>
-          </g>
-        ))}
+          ))}
 
-        {yTicks.map((y, i) => (
-          <g key={i}>
-            <text x={padL - 8} y={sy(y)} fontSize="11" textAnchor="end" dominantBaseline="middle" fill="var(--muted)">
+          {yTicks.map((y, i) => (
+            <text key={i} x={padL - 10} y={sy(y) + 4} fontSize="11" fontWeight="700" textAnchor="end" fill="var(--muted)">
               {fmt(y)}
             </text>
-          </g>
-        ))}
+          ))}
 
-        {/* Labels */}
-        <text x={(W - padR + padL) / 2} y={H - 10} textAnchor="middle" fontSize="12" fontWeight="700" fill="var(--text-main)">
-          {xLabel}
-        </text>
+          {/* Axis labels */}
+          <text x={(W - padR + padL) / 2} y={H - 4} textAnchor="middle" fontSize="11" fontWeight="800" fill="var(--muted)">
+            {xLabel}
+          </text>
 
-        <text
-          x="15"
-          y={(H - padB + padT) / 2}
-          transform={`rotate(-90 15 ${(H - padB + padT) / 2})`}
-          textAnchor="middle"
-          fontSize="12"
-          fontWeight="700"
-          fill="var(--text-main)"
-        >
-          {yLabel}
-        </text>
+          <text
+            x="14"
+            y={(H - padB + padT) / 2}
+            transform={`rotate(-90 14 ${(H - padB + padT) / 2})`}
+            textAnchor="middle"
+            fontSize="11"
+            fontWeight="800"
+            fill="var(--muted)"
+          >
+            {yLabel}
+          </text>
 
-        {/* Band */}
-        {bandD && <path d={bandD} fill={accent} opacity="0.12" />}
+          {/* Uncertainty band */}
+          {bandD && <path d={bandD} fill={accent} opacity="0.12" />}
 
-        {/* Line */}
-        <path d={lineD} stroke={accent} strokeWidth="2.2" fill="none" />
+          {/* Area wash under the mean line */}
+          <path d={`${lineD} L ${sx(lastPoint.x)} ${H - padB} L ${sx(clean[0].x)} ${H - padB} Z`} fill={`url(#${gradientId})`} stroke="none" />
 
-        {/* Points */}
-        {series.map((p, i) =>
-          Number.isFinite(p.x) && Number.isFinite(p.y) ? (
-            <circle key={i} cx={sx(p.x)} cy={sy(p.y)} r="2.8" fill={accent} />
-          ) : null
-        )}
-      </svg>
+          {/* Line */}
+          <path d={lineD} stroke={accent} strokeWidth="2" fill="none" strokeLinejoin="round" strokeLinecap="round" />
+
+          {/* Crosshair */}
+          {hovered ? (
+            <line
+              x1={sx(hovered.x)}
+              y1={padT}
+              x2={sx(hovered.x)}
+              y2={H - padB}
+              stroke="var(--muted)"
+              strokeWidth="1"
+              strokeDasharray="3 3"
+              opacity="0.5"
+            />
+          ) : null}
+
+          {/* End marker + value */}
+          <circle cx={sx(lastPoint.x)} cy={sy(lastPoint.y)} r="5" fill={accent} stroke="var(--panel)" strokeWidth="2" />
+          <text x={sx(lastPoint.x) - 9} y={sy(lastPoint.y) - 10} fontSize="12" fontWeight="900" textAnchor="end" fill="var(--text-main)">
+            {fmt(lastPoint.y)}
+          </text>
+
+          {/* Hover marker */}
+          {hovered ? (
+            <circle cx={sx(hovered.x)} cy={sy(hovered.y)} r="5" fill={accent} stroke="var(--panel)" strokeWidth="2" />
+          ) : null}
+        </svg>
+
+        {hovered ? (
+          <div
+            style={{
+              ...s.chartTooltip,
+              left: `${tooltipLeftPct}%`,
+              top: `${tooltipTopPct}%`,
+              transform: `translate(${tooltipAlignEnd ? "-100%" : "0%"}, -130%)`,
+            }}
+          >
+            <div style={s.chartTooltipRow}>
+              <span style={s.chartTooltipLabel}>{xLabel}</span>
+              <span style={s.chartTooltipValue}>{fmt(hovered.x)}</span>
+            </div>
+            <div style={s.chartTooltipRow}>
+              <span style={s.chartTooltipLabel}>{yLabel}</span>
+              <span style={s.chartTooltipValue}>{fmt(hovered.y)}</span>
+            </div>
+            {hasBand ? (
+              <div style={s.chartTooltipRow}>
+                <span style={s.chartTooltipLabel}>{"±"}</span>
+                <span style={s.chartTooltipValue}>{fmt((hovered.hi - hovered.lo) / 2)}</span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1504,7 +1661,7 @@ const s = {
     justifyContent: "space-between",
     gap: 12,
     background: "var(--panel)",
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     borderRadius: 18,
     boxShadow: "var(--shadow)",
     padding: 14,
@@ -1525,7 +1682,7 @@ const s = {
     padding: "10px 12px",
     cursor: "pointer",
     fontWeight: 900,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
   },
 
   btnPrimary: {
@@ -1536,7 +1693,7 @@ const s = {
     padding: "10px 12px",
     cursor: "pointer",
     fontWeight: 950,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
     boxShadow: "0 14px 30px rgba(230,57,70,0.20)",
   },
 
@@ -1548,12 +1705,12 @@ const s = {
     padding: "10px 12px",
     cursor: "pointer",
     fontWeight: 900,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
   },
 
   headerCard: {
     background: "var(--panel)",
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     borderRadius: 18,
     boxShadow: "var(--shadow)",
     padding: 18,
@@ -1561,15 +1718,6 @@ const s = {
     gap: 16,
     justifyItems: "center",
   },
-
-  headerTitleWrap: {
-    display: "grid",
-    justifyItems: "center",
-    textAlign: "center",
-    width: "100%",
-  },
-
-  h1: { fontSize: 20, fontWeight: 950, letterSpacing: -0.3, textAlign: "center" },
 
   tabsCentered: {
     display: "flex",
@@ -1588,7 +1736,7 @@ const s = {
     padding: "8px 12px",
     cursor: "pointer",
     fontWeight: 900,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
   },
   tabActive: {
     borderColor: "rgba(230,57,70,0.25)",
@@ -1605,7 +1753,7 @@ const s = {
 
   panel: {
     background: "var(--panel)",
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     borderRadius: 18,
     boxShadow: "var(--shadow)",
     padding: 16,
@@ -1617,7 +1765,7 @@ const s = {
   panelFull: {
     gridColumn: "1 / -1",
     background: "var(--panel)",
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     borderRadius: 18,
     boxShadow: "var(--shadow)",
     padding: 16,
@@ -1668,7 +1816,7 @@ const s = {
   },
 
   chartBox: {
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     borderRadius: 16,
     padding: 12,
     background: "var(--bg-surface-2)",
@@ -1677,7 +1825,7 @@ const s = {
 
   chartEmpty: { color: "var(--muted)", fontWeight: 800, padding: 10 },
 
-  legend: { display: "flex", gap: 10, flexWrap: "wrap", paddingTop: 10 },
+  legend: { display: "flex", gap: 14, flexWrap: "wrap", paddingTop: 10 },
   legendItem: {
     display: "flex",
     alignItems: "center",
@@ -1685,7 +1833,7 @@ const s = {
     fontWeight: 850,
     color: "var(--black)",
   },
-  legendDot: { width: 10, height: 10, borderRadius: 999 },
+  legendLine: { width: 14, height: 3, borderRadius: 2, flexShrink: 0, display: "inline-block" },
 
   pre: {
     margin: 0,
@@ -1725,7 +1873,7 @@ const s = {
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
   },
   fileItemActive: {
     borderColor: "rgba(230,57,70,0.25)",
@@ -1749,7 +1897,7 @@ const s = {
   },
 
   tableShell: {
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     background: "var(--bg-surface-2)",
     borderRadius: 16,
     overflow: "hidden",
@@ -1789,16 +1937,6 @@ const s = {
     color: "var(--black)",
   },
 
-  tableSelect: {
-    border: "1px solid var(--border-color)",
-    background: "var(--surface-2)",
-    borderRadius: 12,
-    padding: "8px 10px",
-    outline: "none",
-    fontWeight: 800,
-    color: "var(--black)",
-    cursor: "pointer",
-  },
 
   tableWrap2: {
     maxHeight: "60vh",
@@ -1807,7 +1945,7 @@ const s = {
 
   reportPreviewBox: {
     marginTop: 10,
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     borderRadius: 14,
     padding: 10,
     background: "var(--surface-2)",
@@ -1877,7 +2015,7 @@ const s = {
   poSub: { fontSize: 12, color: "var(--muted)", fontWeight: 750, marginTop: 2 },
 
   bandCard: {
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     borderRadius: 16,
     padding: 12,
     background: "var(--surface-2)",
@@ -1892,6 +2030,52 @@ const s = {
   bandTitle: { fontWeight: 950, letterSpacing: -0.2 },
   bandMeta: { fontSize: 12, color: "var(--muted)", fontWeight: 750 },
 
+  bandChartWrap: { position: "relative" },
+
+  chartTooltip: {
+    position: "absolute",
+    pointerEvents: "none",
+    background: "var(--panel)",
+    border: "1px solid var(--border-soft)",
+    borderRadius: 10,
+    padding: "6px 10px",
+    boxShadow: "var(--shadow)",
+    display: "grid",
+    gap: 2,
+    whiteSpace: "nowrap",
+    zIndex: 2,
+  },
+
+  chartTooltipRow: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: 8,
+    justifyContent: "space-between",
+  },
+
+  chartTooltipLabel: {
+    fontSize: 10,
+    fontWeight: 800,
+    color: "var(--muted)",
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  },
+
+  chartTooltipSeriesLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 11,
+    fontWeight: 800,
+    color: "var(--muted)",
+  },
+
+  chartTooltipValue: {
+    fontSize: 12,
+    fontWeight: 900,
+    color: "var(--text-main)",
+  },
+
   smallBtn: {
     border: "1px solid var(--border)",
     background: "var(--bg-surface-2)",
@@ -1901,7 +2085,7 @@ const s = {
     cursor: "pointer",
     fontWeight: 900,
     fontSize: 12,
-    transition: "transform 140ms ease, box-shadow 140ms ease",
+    transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
   },
 
   filePreviewGrid: {
@@ -1910,10 +2094,52 @@ const s = {
   },
 
   filePreviewVisualCard: {
-    border: "1px solid var(--border)",
+    border: "1px solid var(--border-soft)",
     borderRadius: 16,
     padding: 10,
     background: "var(--bg-surface-2)",
+  },
+
+  planeGroup: {
+    position: "relative",
+    display: "inline-flex",
+    padding: 4,
+    borderRadius: 12,
+    background: "var(--surface-2)",
+    border: "1px solid var(--line)",
+  },
+
+  planeIndicator: {
+    position: "absolute",
+    top: 4,
+    left: 4,
+    width: 32,
+    height: "calc(100% - 8px)",
+    borderRadius: 8,
+    background: "linear-gradient(165deg, rgba(235,68,80,1), rgba(190,30,44,1))",
+    boxShadow: "0 8px 18px rgba(230,57,70,0.28)",
+    transition: "transform 260ms cubic-bezier(0.22, 1, 0.36, 1)",
+    zIndex: 0,
+  },
+
+  planeBtn: {
+    position: "relative",
+    zIndex: 1,
+    width: 32,
+    height: 26,
+    display: "grid",
+    placeItems: "center",
+    border: "none",
+    background: "transparent",
+    color: "var(--text-main)",
+    cursor: "pointer",
+    fontWeight: 800,
+    fontSize: 12,
+    borderRadius: 8,
+  },
+
+  planeBtnActiveText: {
+    color: "#ffffff",
   },
 
   filePreviewImage: {
