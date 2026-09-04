@@ -1,9 +1,12 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import logoPng from "../assets/logo.png";
 import { useUi } from "../components/Shell.jsx";
 import Summary from "./Summary";
 import Select from "../components/Select.jsx";
+import DirectorField3DViewer from "../components/DirectorField3DViewer.jsx";
+import BandChart from "../components/BandChart.jsx";
+import { buildDirectorFieldTimeline } from "../utils/directorField.js";
 
 const api = window.mclics;
 
@@ -62,6 +65,10 @@ export default function Results() {
   const [directorPreviewImage, setDirectorPreviewImage] = useState("");
   const [directorPreviewError, setDirectorPreviewError] = useState("");
   const [plane, setPlane] = useState("z");
+  const [directorViewMode, setDirectorViewMode] = useState("3d"); // "3d" | "2d"
+  const [directorTimeline, setDirectorTimeline] = useState([]); // sorted [{path, mtimeMs}]
+  const [playing, setPlaying] = useState(false);
+  const [director3DCsvText, setDirector3DCsvText] = useState("");
 
   const { id, workdir } = state;
 
@@ -94,6 +101,8 @@ export default function Results() {
     (async () => {
       try {
         const r = await api.listRunFiles(workdir);
+
+        setDirectorTimeline(buildDirectorFieldTimeline(r?.files || []));
 
         const rawList = (r?.files || []).map((f) =>
           typeof f === "string" ? f : f.path
@@ -151,8 +160,42 @@ export default function Results() {
     })();
   }, [workdir, selected, lang, plane]);
 
+  /* ---------- load selected director_field csv for the 3D viewer ----------
+   * A dedicated fetch with a much higher byte cap than the generic 2MB
+   * preview above: a full lattice snapshot (one row per point) can exceed
+   * that cap for larger grids, and the 3D view needs the complete snapshot,
+   * not a silently truncated one. */
   useEffect(() => {
-    if (!api || !workdir || !selected || !isDirectorFieldFile(selected)) {
+    if (!api || !workdir || !selected || !isDirectorFieldFile(selected) || directorViewMode !== "3d") {
+      setDirector3DCsvText("");
+      return;
+    }
+
+    let dead = false;
+
+    (async () => {
+      try {
+        const r = await api.readRunFile(workdir, selected, 25_000_000);
+        if (!dead) setDirector3DCsvText(r?.text || "");
+      } catch (e) {
+        console.error(e);
+        if (!dead) setDirector3DCsvText("");
+      }
+    })();
+
+    return () => {
+      dead = true;
+    };
+  }, [workdir, selected, directorViewMode]);
+
+  useEffect(() => {
+    if (
+      !api ||
+      !workdir ||
+      !selected ||
+      !isDirectorFieldFile(selected) ||
+      directorViewMode !== "2d"
+    ) {
       setDirectorPreviewImage("");
       setDirectorPreviewError("");
       return;
@@ -204,7 +247,7 @@ export default function Results() {
     return () => {
       dead = true;
     };
-  }, [workdir, selected, lang, plane]);
+  }, [workdir, selected, lang, plane, directorViewMode]);
 
   /* ---------- load po.dat ALWAYS (plots tab source) ---------- */
   useEffect(() => {
@@ -294,6 +337,50 @@ export default function Results() {
 
   /* ---------- parse param.txt into (key,value) rows ---------- */
   const paramKV = useMemo(() => parseParamKV(paramText), [paramText]);
+
+  /* ---------- director_field timeline (3D scrubber / playback) ---------- */
+  const directorTimelineIndex = useMemo(
+    () => directorTimeline.findIndex((f) => f.path === selected),
+    [directorTimeline, selected]
+  );
+
+  const stepTimeline = (delta) => {
+    if (!directorTimeline.length) return;
+    const base = directorTimelineIndex >= 0 ? directorTimelineIndex : 0;
+    const next = (base + delta + directorTimeline.length) % directorTimeline.length;
+    setSelected(directorTimeline[next].path);
+  };
+
+  const togglePlay = () => {
+    // Pressing Play again after reaching the end restarts from the first
+    // snapshot instead of doing nothing (it would otherwise immediately
+    // stop again, already sitting on the last frame).
+    const atEnd = directorTimeline.length > 0 && directorTimelineIndex >= directorTimeline.length - 1;
+    if (!playing && atEnd) setSelected(directorTimeline[0].path);
+    setPlaying((v) => !v);
+  };
+
+  useEffect(() => {
+    if (!playing || directorTimeline.length < 2) return;
+
+    const timer = setInterval(() => {
+      const base = directorTimelineIndex >= 0 ? directorTimelineIndex : 0;
+      if (base >= directorTimeline.length - 1) {
+        // Reached the last snapshot — stop instead of looping back to the
+        // start, so playback reads as "the simulation finished", not a
+        // restart.
+        setPlaying(false);
+        return;
+      }
+      setSelected(directorTimeline[base + 1].path);
+    }, 900);
+
+    return () => clearInterval(timer);
+  }, [playing, directorTimeline, directorTimelineIndex]);
+
+  useEffect(() => {
+    if (directorTimeline.length < 2) setPlaying(false);
+  }, [directorTimeline.length]);
 
   const exportPDF = async () => {
     try {
@@ -518,14 +605,26 @@ export default function Results() {
     }
   };
 
+  const runLabel = id
+    ? `McLiCS-${id}`
+    : String(workdir || "").split(/[\\/]/).filter(Boolean).pop() || "";
+
   return (
     <div style={s.page}>
       <div style={s.top}>
         <div style={s.brand}>
           <div style={s.dot} />
           <div>
-            <div style={s.brandTitle}>McLiCS</div>
-            <div style={s.brandSub}>{t("appSubtitle")}</div>
+            <div style={s.brandTitle}>{t("results")}</div>
+            <div
+              style={{
+                ...s.brandSub,
+                ...(runLabel ? { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" } : null),
+              }}
+              title={workdir || ""}
+            >
+              {runLabel || t("appSubtitle")}
+            </div>
           </div>
         </div>
 
@@ -673,9 +772,109 @@ export default function Results() {
             </div>
 
             {isDirectorFieldFile(selected) ? (
-              <div style={s.filePreviewGrid}>
-                <div style={s.filePreviewVisualCard}>
-                  {directorPreviewImage ? (
+              <div style={s.filePreviewVisualCard}>
+                <div style={s.modeToggleRow}>
+                  <div style={s.modeToggleGroup}>
+                    <button
+                      type="button"
+                      className="ui-hover"
+                      onClick={() => setDirectorViewMode("3d")}
+                      style={{
+                        ...s.modeToggleBtn,
+                        ...(directorViewMode === "3d" ? s.modeToggleBtnActive : null),
+                      }}
+                    >
+                      {t("director3dView")}
+                    </button>
+                    <button
+                      type="button"
+                      className="ui-hover"
+                      onClick={() => setDirectorViewMode("2d")}
+                      style={{
+                        ...s.modeToggleBtn,
+                        ...(directorViewMode === "2d" ? s.modeToggleBtnActive : null),
+                      }}
+                    >
+                      {t("director2dView")}
+                    </button>
+                    <button
+                      type="button"
+                      className="ui-hover"
+                      onClick={() => setDirectorViewMode("table")}
+                      style={{
+                        ...s.modeToggleBtn,
+                        ...(directorViewMode === "table" ? s.modeToggleBtnActive : null),
+                      }}
+                    >
+                      {t("directorTableView")}
+                    </button>
+                  </div>
+
+                  {directorTimeline.length > 1 ? (
+                    <div style={s.timelineControls}>
+                      <button
+                        type="button"
+                        className="ui-hover"
+                        style={s.timelineBtn}
+                        onClick={() => {
+                          setPlaying(false);
+                          stepTimeline(-1);
+                        }}
+                        title={t("directorTimelinePrev")}
+                      >
+                        ◀
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-hover"
+                        style={s.timelineBtn}
+                        onClick={togglePlay}
+                        title={playing ? t("directorTimelinePause") : t("directorTimelinePlay")}
+                      >
+                        {playing ? "⏸" : "▶"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-hover"
+                        style={s.timelineBtn}
+                        onClick={() => {
+                          setPlaying(false);
+                          stepTimeline(1);
+                        }}
+                        title={t("directorTimelineNext")}
+                      >
+                        ▶|
+                      </button>
+                      <input
+                        type="range"
+                        min={0}
+                        max={directorTimeline.length - 1}
+                        value={Math.max(0, directorTimelineIndex)}
+                        onChange={(e) => {
+                          setPlaying(false);
+                          setSelected(directorTimeline[Number(e.target.value)].path);
+                        }}
+                        style={s.timelineRange}
+                      />
+                      <span style={s.timelineLabel}>
+                        {t("directorTimelineFrame", {
+                          index: (directorTimelineIndex >= 0 ? directorTimelineIndex : 0) + 1,
+                          total: directorTimeline.length,
+                        })}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+
+                {directorViewMode === "3d" ? (
+                  <DirectorField3DViewer csvText={director3DCsvText} height={520} />
+                ) : directorViewMode === "table" ? (
+                  table ? (
+                    <DataTable table={table} maxRows={220} />
+                  ) : (
+                    <pre style={s.preTall}>{fileText || t("empty")}</pre>
+                  )
+                ) : directorPreviewImage ? (
                   <div>
                     <div style={{ ...s.planeGroup, marginBottom: 10 }}>
                       <div
@@ -711,15 +910,6 @@ export default function Results() {
                     {directorPreviewError || (t("noPlotPreview") || "No preview available")}
                   </div>
                 )}
-                </div>
-
-                <div style={s.filePreviewData}>
-                  {table ? (
-                    <DataTable table={table} maxRows={220} />
-                  ) : (
-                    <pre style={s.preTall}>{fileText || t("empty")}</pre>
-                  )}
-                </div>
               </div>
             ) : table ? (
               <DataTable table={table} maxRows={400} />
@@ -1436,202 +1626,6 @@ function PoDatChart({ table }) {
   );
 }
 
-function BandChart({ title, xLabel, yLabel, series, accent }) {
-  const W = 980;
-  const H = 320;
-  const padL = 60;
-  const padR = 24;
-  const padT = 24;
-  const padB = 40;
-
-  const gradientId = useId();
-  const wrapRef = useRef(null);
-  const [hoverIdx, setHoverIdx] = useState(null);
-
-  const clean = series.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
-
-  const xs = series.map((p) => p.x).filter(Number.isFinite);
-  const ys = series.map((p) => p.y).filter(Number.isFinite);
-  const los = series.map((p) => p.lo).filter(Number.isFinite);
-  const his = series.map((p) => p.hi).filter(Number.isFinite);
-
-  const xmin = Math.min(...xs);
-  const xmax = Math.max(...xs);
-  const ymin = Math.min(...ys, ...(los.length ? los : ys));
-  const ymax = Math.max(...ys, ...(his.length ? his : ys));
-  const yPad = (ymax - ymin || 1) * 0.08;
-
-  const sx = (x) => padL + ((x - xmin) / (xmax - xmin || 1)) * (W - padL - padR);
-  const sy = (y) =>
-    H - padB - ((y - (ymin - yPad)) / (ymax - ymin + yPad * 2 || 1)) * (H - padT - padB);
-
-  const ticks = 5;
-
-  const xTicks = Array.from({ length: ticks }, (_, i) => xmin + (i / (ticks - 1)) * (xmax - xmin));
-  const yTicks = Array.from({ length: ticks }, (_, i) => ymin + (i / (ticks - 1)) * (ymax - ymin));
-
-  const lineD = clean.map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x)} ${sy(p.y)}`).join(" ");
-
-  const bandPtsHi = series.filter((p) => Number.isFinite(p.hi)).map((p) => [sx(p.x), sy(p.hi)]);
-  const bandPtsLo = series
-    .filter((p) => Number.isFinite(p.lo))
-    .map((p) => [sx(p.x), sy(p.lo)])
-    .reverse();
-
-  const bandD =
-    bandPtsHi.length && bandPtsLo.length
-      ? `M ${bandPtsHi[0][0]} ${bandPtsHi[0][1]} ` +
-        bandPtsHi.slice(1).map(([x, y]) => `L ${x} ${y}`).join(" ") +
-        " " +
-        bandPtsLo.map(([x, y]) => `L ${x} ${y}`).join(" ") +
-        " Z"
-      : "";
-
-  const lastPoint = clean[clean.length - 1];
-
-  const handleMove = (e) => {
-    const rect = wrapRef.current?.getBoundingClientRect();
-    if (!rect || !clean.length) return;
-
-    const mx = ((e.clientX - rect.left) / rect.width) * W;
-
-    let nearest = 0;
-    let nearestDist = Infinity;
-    clean.forEach((p, i) => {
-      const d = Math.abs(sx(p.x) - mx);
-      if (d < nearestDist) {
-        nearestDist = d;
-        nearest = i;
-      }
-    });
-
-    setHoverIdx(nearest);
-  };
-
-  const hovered = hoverIdx !== null ? clean[hoverIdx] : null;
-  const hasBand = hovered && Number.isFinite(hovered.lo) && Number.isFinite(hovered.hi);
-  const tooltipLeftPct = hovered ? (sx(hovered.x) / W) * 100 : 0;
-  const tooltipTopPct = hovered ? (sy(hovered.y) / H) * 100 : 0;
-  const tooltipAlignEnd = hovered ? sx(hovered.x) / W > 0.72 : false;
-
-  return (
-    <div style={s.bandCard}>
-      <div style={s.bandHeader}>
-        <div style={s.bandTitle}>{title}</div>
-      </div>
-
-      <div ref={wrapRef} style={s.bandChartWrap} onMouseMove={handleMove} onMouseLeave={() => setHoverIdx(null)}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block", overflow: "visible" }}>
-          <defs>
-            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={accent} stopOpacity="0.16" />
-              <stop offset="100%" stopColor={accent} stopOpacity="0" />
-            </linearGradient>
-          </defs>
-
-          {/* Grid (horizontal only, recessive) */}
-          {yTicks.map((y, i) => (
-            <line key={i} x1={padL} y1={sy(y)} x2={W - padR} y2={sy(y)} stroke="var(--line)" strokeWidth="1" />
-          ))}
-
-          {/* Baseline */}
-          <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="var(--line)" strokeWidth="1" />
-
-          {/* Ticks + labels */}
-          {xTicks.map((x, i) => (
-            <text key={i} x={sx(x)} y={H - padB + 20} fontSize="11" fontWeight="700" textAnchor="middle" fill="var(--muted)">
-              {fmt(x)}
-            </text>
-          ))}
-
-          {yTicks.map((y, i) => (
-            <text key={i} x={padL - 10} y={sy(y) + 4} fontSize="11" fontWeight="700" textAnchor="end" fill="var(--muted)">
-              {fmt(y)}
-            </text>
-          ))}
-
-          {/* Axis labels */}
-          <text x={(W - padR + padL) / 2} y={H - 4} textAnchor="middle" fontSize="11" fontWeight="800" fill="var(--muted)">
-            {xLabel}
-          </text>
-
-          <text
-            x="14"
-            y={(H - padB + padT) / 2}
-            transform={`rotate(-90 14 ${(H - padB + padT) / 2})`}
-            textAnchor="middle"
-            fontSize="11"
-            fontWeight="800"
-            fill="var(--muted)"
-          >
-            {yLabel}
-          </text>
-
-          {/* Uncertainty band */}
-          {bandD && <path d={bandD} fill={accent} opacity="0.12" />}
-
-          {/* Area wash under the mean line */}
-          <path d={`${lineD} L ${sx(lastPoint.x)} ${H - padB} L ${sx(clean[0].x)} ${H - padB} Z`} fill={`url(#${gradientId})`} stroke="none" />
-
-          {/* Line */}
-          <path d={lineD} stroke={accent} strokeWidth="2" fill="none" strokeLinejoin="round" strokeLinecap="round" />
-
-          {/* Crosshair */}
-          {hovered ? (
-            <line
-              x1={sx(hovered.x)}
-              y1={padT}
-              x2={sx(hovered.x)}
-              y2={H - padB}
-              stroke="var(--muted)"
-              strokeWidth="1"
-              strokeDasharray="3 3"
-              opacity="0.5"
-            />
-          ) : null}
-
-          {/* End marker + value */}
-          <circle cx={sx(lastPoint.x)} cy={sy(lastPoint.y)} r="5" fill={accent} stroke="var(--panel)" strokeWidth="2" />
-          <text x={sx(lastPoint.x) - 9} y={sy(lastPoint.y) - 10} fontSize="12" fontWeight="900" textAnchor="end" fill="var(--text-main)">
-            {fmt(lastPoint.y)}
-          </text>
-
-          {/* Hover marker */}
-          {hovered ? (
-            <circle cx={sx(hovered.x)} cy={sy(hovered.y)} r="5" fill={accent} stroke="var(--panel)" strokeWidth="2" />
-          ) : null}
-        </svg>
-
-        {hovered ? (
-          <div
-            style={{
-              ...s.chartTooltip,
-              left: `${tooltipLeftPct}%`,
-              top: `${tooltipTopPct}%`,
-              transform: `translate(${tooltipAlignEnd ? "-100%" : "0%"}, -130%)`,
-            }}
-          >
-            <div style={s.chartTooltipRow}>
-              <span style={s.chartTooltipLabel}>{xLabel}</span>
-              <span style={s.chartTooltipValue}>{fmt(hovered.x)}</span>
-            </div>
-            <div style={s.chartTooltipRow}>
-              <span style={s.chartTooltipLabel}>{yLabel}</span>
-              <span style={s.chartTooltipValue}>{fmt(hovered.y)}</span>
-            </div>
-            {hasBand ? (
-              <div style={s.chartTooltipRow}>
-                <span style={s.chartTooltipLabel}>{"±"}</span>
-                <span style={s.chartTooltipValue}>{fmt((hovered.hi - hovered.lo) / 2)}</span>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 function fmt(v) {
   if (!Number.isFinite(v)) return "NaN";
   const a = Math.abs(v);
@@ -2014,22 +2008,6 @@ const s = {
   poTitle: { fontWeight: 950, letterSpacing: -0.2 },
   poSub: { fontSize: 12, color: "var(--muted)", fontWeight: 750, marginTop: 2 },
 
-  bandCard: {
-    border: "1px solid var(--border-soft)",
-    borderRadius: 16,
-    padding: 12,
-    background: "var(--surface-2)",
-  },
-  bandHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-    gap: 12,
-    paddingBottom: 8,
-  },
-  bandTitle: { fontWeight: 950, letterSpacing: -0.2 },
-  bandMeta: { fontSize: 12, color: "var(--muted)", fontWeight: 750 },
-
   bandChartWrap: { position: "relative" },
 
   chartTooltip: {
@@ -2088,11 +2066,6 @@ const s = {
     transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
   },
 
-  filePreviewGrid: {
-    display: "grid",
-    gap: 12,
-  },
-
   filePreviewVisualCard: {
     border: "1px solid var(--border-soft)",
     borderRadius: 16,
@@ -2149,6 +2122,73 @@ const s = {
     borderRadius: 10,
   },
 
+  modeToggleRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    flexWrap: "wrap",
+    marginBottom: 10,
+  },
+
+  modeToggleGroup: {
+    display: "inline-flex",
+    padding: 4,
+    borderRadius: 12,
+    background: "var(--surface-2)",
+    border: "1px solid var(--line)",
+    gap: 2,
+  },
+
+  modeToggleBtn: {
+    border: "none",
+    background: "transparent",
+    color: "var(--text-main)",
+    cursor: "pointer",
+    fontWeight: 800,
+    fontSize: 12,
+    padding: "6px 12px",
+    borderRadius: 8,
+  },
+
+  modeToggleBtnActive: {
+    background: "linear-gradient(165deg, rgba(235,68,80,1), rgba(190,30,44,1))",
+    color: "#ffffff",
+    boxShadow: "0 8px 18px rgba(230,57,70,0.28)",
+  },
+
+  timelineControls: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+    minWidth: 220,
+  },
+
+  timelineBtn: {
+    border: "1px solid var(--border)",
+    background: "var(--bg-surface-2)",
+    color: "var(--black)",
+    borderRadius: 10,
+    padding: "4px 8px",
+    cursor: "pointer",
+    fontWeight: 800,
+    fontSize: 12,
+    lineHeight: 1,
+  },
+
+  timelineRange: {
+    flex: 1,
+    minWidth: 80,
+  },
+
+  timelineLabel: {
+    fontSize: 11,
+    fontWeight: 800,
+    color: "var(--muted)",
+    whiteSpace: "nowrap",
+  },
+
   filePreviewEmpty: {
     minHeight: 220,
     display: "grid",
@@ -2162,7 +2202,4 @@ const s = {
     padding: 16,
   },
 
-  filePreviewData: {
-    minHeight: 220,
-  },
 };

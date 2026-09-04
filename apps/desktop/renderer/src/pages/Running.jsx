@@ -756,15 +756,14 @@ const s = {
 
   btnCancel: {
     minHeight: 44,
-    border: "1px solid rgba(255,255,255,0.08)",
-    background: "linear-gradient(165deg, rgba(235,68,80,1), rgba(190,30,44,1))",
-    color: "#ffffff",
+    border: "1px solid rgba(230,57,70,0.35)",
+    background: "rgba(230,57,70,0.10)",
+    color: "var(--red)",
     borderRadius: 14,
     padding: "0 16px",
     cursor: "pointer",
     fontWeight: 950,
-    boxShadow: "0 14px 30px rgba(214,40,57,0.32)",
-    textShadow: "0 1px 0 rgba(0,0,0,0.18)",
+    boxShadow: "none",
   },
 
   planeGroup: {

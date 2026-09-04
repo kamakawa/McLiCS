@@ -71,7 +71,11 @@ export default function Shell({ children }) {
           </header>
         )}
 
-        <main style={s.main}>{children}</main>
+        <main style={s.main}>
+          <div key={loc.pathname} className="fade-slide-up" style={s.routeTransition}>
+            {children}
+          </div>
+        </main>
       </div>
     </UiContext.Provider>
   );
@@ -111,4 +115,5 @@ const s = {
   },
 
   main: { display: "grid", gap: "var(--gap)" },
+  routeTransition: { display: "grid", gap: "var(--gap)" },
 };

@@ -1,5 +1,6 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { useUi } from "../components/Shell.jsx";
+import BandChart from "../components/BandChart.jsx";
 
 export default function Summary({ table }) {
   const { t, lang } = useUi();
@@ -55,8 +56,30 @@ export default function Summary({ table }) {
       </div>
 
       <div style={s.grid2}>
-        <MiniChart title={t("summaryChartS")} data={data.rows} yKey="S" />
-        <MiniChart title={t("summaryChartE")} data={data.rows} yKey="E" />
+        <BandChart
+          title={t("summaryChartS")}
+          xLabel="T"
+          yLabel="S"
+          accent="var(--red)"
+          series={data.rows.map((r) => ({
+            x: r.T,
+            y: r.S,
+            lo: Number.isFinite(r.varS) ? r.S - Math.sqrt(Math.max(0, r.varS)) : null,
+            hi: Number.isFinite(r.varS) ? r.S + Math.sqrt(Math.max(0, r.varS)) : null,
+          }))}
+        />
+        <BandChart
+          title={t("summaryChartE")}
+          xLabel="T"
+          yLabel="E"
+          accent="var(--text-main)"
+          series={data.rows.map((r) => ({
+            x: r.T,
+            y: r.E,
+            lo: Number.isFinite(r.varE) ? r.E - Math.sqrt(Math.max(0, r.varE)) : null,
+            hi: Number.isFinite(r.varE) ? r.E + Math.sqrt(Math.max(0, r.varE)) : null,
+          }))}
+        />
       </div>
     </div>
   );
@@ -71,7 +94,9 @@ function buildSummary(table, lang) {
     .map((r) => ({
       T: r[0],
       S: r[1],
+      varS: r[2],
       E: r[3],
+      varE: r[4],
     }))
     .filter((r) => [r.T, r.S, r.E].every(Number.isFinite))
     .sort((a, b) => a.T - b.T);
@@ -211,181 +236,6 @@ function Metric({ label, value }) {
   );
 }
 
-function MiniChart({ title, data, yKey }) {
-  const W = 420;
-  const H = 240;
-  const padL = 44;
-  const padR = 16;
-  const padT = 16;
-  const padB = 30;
-
-  const gradientId = useId();
-  const wrapRef = useRef(null);
-  const [hoverIdx, setHoverIdx] = useState(null);
-
-  const xs = data.map((d) => d.T);
-  const ys = data.map((d) => d[yKey]);
-
-  const xmin = Math.min(...xs);
-  const xmax = Math.max(...xs);
-  const ymin = Math.min(...ys);
-  const ymax = Math.max(...ys);
-  const yPadding = (ymax - ymin || 1) * 0.12;
-
-  const sx = (x) => padL + ((x - xmin) / (xmax - xmin || 1)) * (W - padL - padR);
-  const sy = (y) =>
-    H - padB - ((y - (ymin - yPadding)) / (ymax - ymin + yPadding * 2 || 1)) * (H - padT - padB);
-
-  const ticks = 4;
-  const xTicks = Array.from({ length: ticks }, (_, i) => xmin + (i / (ticks - 1)) * (xmax - xmin));
-  const yTicks = Array.from({ length: ticks }, (_, i) => ymin + (i / (ticks - 1)) * (ymax - ymin));
-
-  const linePath = data.map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.T)} ${sy(p[yKey])}`).join(" ");
-  const areaPath = `${linePath} L ${sx(data[data.length - 1].T)} ${H - padB} L ${sx(data[0].T)} ${H - padB} Z`;
-
-  const lastPoint = data[data.length - 1];
-
-  const handleMove = (e) => {
-    const rect = wrapRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const mx = ((e.clientX - rect.left) / rect.width) * W;
-
-    let nearest = 0;
-    let nearestDist = Infinity;
-    data.forEach((p, i) => {
-      const d = Math.abs(sx(p.T) - mx);
-      if (d < nearestDist) {
-        nearestDist = d;
-        nearest = i;
-      }
-    });
-
-    setHoverIdx(nearest);
-  };
-
-  const hovered = hoverIdx !== null ? data[hoverIdx] : null;
-  const tooltipLeft = hovered ? (sx(hovered.T) / W) * 100 : 0;
-  const tooltipTop = hovered ? (sy(hovered[yKey]) / H) * 100 : 0;
-  const tooltipAlignEnd = hovered ? sx(hovered.T) / W > 0.72 : false;
-
-  return (
-    <div style={s.card}>
-      <div style={s.cardTitle}>{title}</div>
-
-      <div
-        ref={wrapRef}
-        style={s.chartWrap}
-        onMouseMove={handleMove}
-        onMouseLeave={() => setHoverIdx(null)}
-      >
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block", overflow: "visible" }}>
-          <defs>
-            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--red)" stopOpacity="0.22" />
-              <stop offset="100%" stopColor="var(--red)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-
-          {/* Gridlines */}
-          {yTicks.map((y, i) => (
-            <line
-              key={i}
-              x1={padL}
-              y1={sy(y)}
-              x2={W - padR}
-              y2={sy(y)}
-              stroke="var(--line)"
-              strokeWidth="1"
-            />
-          ))}
-
-          {/* Baseline */}
-          <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="var(--line)" strokeWidth="1" />
-
-          {/* Ticks */}
-          {xTicks.map((x, i) => (
-            <text key={i} x={sx(x)} y={H - padB + 18} fontSize="10" fontWeight="700" textAnchor="middle" fill="var(--muted)">
-              {fmt(x)}
-            </text>
-          ))}
-
-          {yTicks.map((y, i) => (
-            <text key={i} x={padL - 8} y={sy(y) + 3} fontSize="10" fontWeight="700" textAnchor="end" fill="var(--muted)">
-              {fmt(y)}
-            </text>
-          ))}
-
-          {/* Area fill */}
-          <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" />
-
-          {/* Line */}
-          <path d={linePath} stroke="var(--red)" fill="none" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-
-          {/* Crosshair */}
-          {hovered ? (
-            <line
-              x1={sx(hovered.T)}
-              y1={padT}
-              x2={sx(hovered.T)}
-              y2={H - padB}
-              stroke="var(--muted)"
-              strokeWidth="1"
-              strokeDasharray="3 3"
-              opacity="0.5"
-            />
-          ) : null}
-
-          {/* End marker + value */}
-          <circle cx={sx(lastPoint.T)} cy={sy(lastPoint[yKey])} r="5" fill="var(--red)" stroke="var(--panel)" strokeWidth="2" />
-          <text
-            x={sx(lastPoint.T) - 8}
-            y={sy(lastPoint[yKey]) - 10}
-            fontSize="11"
-            fontWeight="900"
-            textAnchor="end"
-            fill="var(--text-main)"
-          >
-            {fmt(lastPoint[yKey])}
-          </text>
-
-          {/* Hover marker */}
-          {hovered ? (
-            <circle
-              cx={sx(hovered.T)}
-              cy={sy(hovered[yKey])}
-              r="5"
-              fill="var(--red)"
-              stroke="var(--panel)"
-              strokeWidth="2"
-            />
-          ) : null}
-        </svg>
-
-        {hovered ? (
-          <div
-            style={{
-              ...s.tooltip,
-              left: `${tooltipLeft}%`,
-              top: `${tooltipTop}%`,
-              transform: `translate(${tooltipAlignEnd ? "-100%" : "0%"}, -130%)`,
-            }}
-          >
-            <div style={s.tooltipRow}>
-              <span style={s.tooltipLabel}>T</span>
-              <span style={s.tooltipValue}>{fmt(hovered.T)}</span>
-            </div>
-            <div style={s.tooltipRow}>
-              <span style={s.tooltipLabel}>{yKey}</span>
-              <span style={s.tooltipValue}>{fmt(hovered[yKey])}</span>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 /* ================= STYLE ================= */
 
 const s = {
@@ -428,44 +278,6 @@ const s = {
   },
 
   cardTitle: { fontWeight: 900, marginBottom: 8, color: "var(--text-main)" },
-
-  chartWrap: {
-    position: "relative",
-  },
-
-  tooltip: {
-    position: "absolute",
-    pointerEvents: "none",
-    background: "var(--panel)",
-    border: "1px solid var(--border-soft)",
-    borderRadius: 10,
-    padding: "6px 10px",
-    boxShadow: "var(--shadow)",
-    display: "grid",
-    gap: 2,
-    whiteSpace: "nowrap",
-  },
-
-  tooltipRow: {
-    display: "flex",
-    alignItems: "baseline",
-    gap: 8,
-    justifyContent: "space-between",
-  },
-
-  tooltipLabel: {
-    fontSize: 10,
-    fontWeight: 800,
-    color: "var(--muted)",
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-  },
-
-  tooltipValue: {
-    fontSize: 12,
-    fontWeight: 900,
-    color: "var(--text-main)",
-  },
 
   list: {
     paddingLeft: 18,
