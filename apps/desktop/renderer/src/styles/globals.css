@@ -6,8 +6,13 @@ html, body { height: 100%; }
 body{
   margin:0;
   font-family: var(--font);
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+  background-size: 24px 24px;
   color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01" 1, "cv05" 1;
 }
 
 button,
