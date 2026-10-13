@@ -1,7 +1,17 @@
-PROGRAM_GPU := mc_sim
-PROGRAM_CPU := mc_sim_cpu
+# OS is set to "Windows_NT" by cmd.exe, PowerShell, and MSYS2/MinGW shells —
+# the standard way to detect a Windows host from a Makefile. Everything below
+# keeps today's Linux output (dist/linux-x64, no .exe) byte-for-byte
+# unchanged; only a Windows host picks up the win-x64 / .exe variant.
+ifeq ($(OS),Windows_NT)
+    EXE_EXT := .exe
+    OUT_DIR ?= dist/win-x64
+else
+    EXE_EXT :=
+    OUT_DIR ?= dist/linux-x64
+endif
 
-OUT_DIR := dist/linux-x64
+PROGRAM_GPU := mc_sim$(EXE_EXT)
+PROGRAM_CPU := mc_sim_cpu$(EXE_EXT)
 
 ########### Gnu:
 COMPILER := g++

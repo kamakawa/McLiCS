@@ -19,6 +19,7 @@
     "prepare:packaged-assets": "node ./scripts/prepare-packaged-assets.js",
 
     "dist:linux": "npm run build:renderer && npm run prepare:packaged-assets && electron-builder --linux AppImage deb",
+    "dist:win": "npm run build:renderer && npm run prepare:packaged-assets && electron-builder --win nsis portable",
     "dist:dir": "npm run build:renderer && npm run prepare:packaged-assets && electron-builder --dir",
 
     "pack": "npm run dist:linux"
@@ -80,6 +81,19 @@
       "icon": "build",
       "maintainer": "Eric Kamakawa <erickamakawa@gmail.com>",
       "artifactName": "McLiCS-${version}-${arch}.${ext}"
+    },
+
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "build/icon.png",
+      "artifactName": "McLiCS-${version}-${arch}.${ext}"
+    },
+
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }

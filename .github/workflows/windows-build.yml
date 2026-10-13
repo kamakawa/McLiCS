@@ -1,0 +1,80 @@
+name: Windows build
+
+# Builds the CPU backend (MinGW-w64, via MSYS2) and packages the full desktop
+# app into a Windows installer (NSIS) + portable .exe, on an actual Windows
+# runner — this does not run on Linux, so it's the only way to produce and
+# validate a real Windows build for this project. GPU/CUDA support is not
+# included here: building it needs MSVC + the CUDA Toolkit, a separate,
+# heavier toolchain this workflow does not set up (see README).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master, main]
+    paths:
+      - "backend/**"
+      - "apps/desktop/**"
+      - ".github/workflows/windows-build.yml"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2 (MinGW64)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-gsl
+
+      - name: Build backend (CPU)
+        run: |
+          cd backend
+          make CPU
+          ls -la dist/win-x64
+
+      - name: Bundle runtime DLLs next to the .exe
+        run: |
+          cd backend/dist/win-x64
+          for dll in $(ldd mc_sim_cpu.exe | grep '/mingw64/bin/' | awk '{print $3}'); do
+            cp -v "$dll" .
+          done
+          ls -la
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install renderer dependencies
+        shell: pwsh
+        working-directory: apps/desktop/renderer
+        run: npm install
+
+      - name: Install main-process dependencies
+        shell: pwsh
+        working-directory: apps/desktop/main
+        run: npm install
+
+      - name: Build + package Windows installer
+        shell: pwsh
+        working-directory: apps/desktop/main
+        run: npm run dist:win
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: McLiCS-windows
+          path: |
+            apps/desktop/main/dist/*.exe
+          if-no-files-found: error

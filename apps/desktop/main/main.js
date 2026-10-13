@@ -72,16 +72,34 @@ function devBackendDir() {
   return path.join(projectRoot(), "backend");
 }
 
-function packagedBackendDir() {
-  return path.join(process.resourcesPath, "backend", "linux-x64");
+function platformArchDir() {
+  if (process.platform === "win32") return "win-x64";
+  return "linux-x64";
 }
 
+function packagedBackendDir() {
+  return path.join(process.resourcesPath, "backend", platformArchDir());
+}
+
+// Where the backend SOURCE lives (the Makefile) — only relevant in dev mode,
+// used as the cwd for `make`/`make CPU`.
+function backendSourceDir() {
+  return devBackendDir();
+}
+
+// Where the compiled backend EXECUTABLE lives, for spawning. In dev mode
+// this is backend/dist/<platform>, matching the Makefile's own OUT_DIR — NOT
+// the backend/ source root itself, which only ever held stale, manually
+// placed binaries that `make` never touches.
 function backendDir() {
-  return app.isPackaged ? packagedBackendDir() : devBackendDir();
+  return app.isPackaged
+    ? packagedBackendDir()
+    : path.join(devBackendDir(), "dist", platformArchDir());
 }
 
 function backendBinaryName(mode) {
-  return mode === "cpu" ? "mc_sim_cpu" : "mc_sim";
+  const base = mode === "cpu" ? "mc_sim_cpu" : "mc_sim";
+  return process.platform === "win32" ? `${base}.exe` : base;
 }
 
 function runsBaseDir() {
@@ -96,18 +114,29 @@ function realPath(p) {
   }
 }
 
+// NTFS (Windows) is case-insensitive and drive letters can come back from
+// different APIs with different casing (C:\ vs c:\) — normalize before
+// comparing so a legitimate path isn't rejected as "outside" the base dir
+// just because of letter case.
+function comparablePath(p) {
+  return process.platform === "win32" ? p.toLowerCase() : p;
+}
+
 function safeInsideReal(parent, child) {
   const P = realPath(parent);
   const C = realPath(child);
+  const Pc = comparablePath(P);
+  const Cc = comparablePath(C);
 
-  if (P === C) return true;
+  if (Pc === Cc) return true;
 
-  const rel = path.relative(P, C);
+  const rel = path.relative(Pc, Cc);
   return !!rel && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
 function pythonExec() {
-  return process.env.PYTHON || "python3";
+  if (process.env.PYTHON) return process.env.PYTHON;
+  return process.platform === "win32" ? "python" : "python3";
 }
 
 function previewCacheDir(workdir) {
@@ -573,6 +602,7 @@ ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
 
   const backend = backendDir();
   const exePath = path.join(backend, backendBinaryName(mode));
+  const compileCwd = app.isPackaged ? backend : backendSourceDir();
 
   const finishRun = (payload) => {
     const donePayload = {
@@ -596,11 +626,12 @@ ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
     if (!app.isPackaged) {
       console.log("===== COMPILING BACKEND (DEV MODE) =====");
       console.log("Mode:", mode);
-      console.log("Backend:", backend);
+      console.log("Backend source:", compileCwd);
+      console.log("Backend exe dir:", backend);
 
       const makeArgs = mode === "cpu" ? ["CPU"] : [];
       const compile = spawnSync("make", makeArgs, {
-        cwd: backend,
+        cwd: compileCwd,
         encoding: "utf8",
       });
 
