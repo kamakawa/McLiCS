@@ -5,6 +5,8 @@ import { ParamHelp, ParameterHelpPanel } from "../data/parameterHelp.jsx";
 import { getHelpUi } from "../data/parameterHelp.js";
 import { ChevronLeftIcon } from "../components/Icons.jsx";
 import Select from "../components/Select.jsx";
+import Modal from "../components/Modal.jsx";
+import { defaultParams } from "../utils/paramTxt.js";
 
 const api = window.mclics;
 
@@ -45,6 +47,8 @@ export default function Setup() {
   const [hoverGPU, setHoverGPU] = useState(false);
   const [showHelpGuide, setShowHelpGuide] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [checkingGpu, setCheckingGpu] = useState(false);
+  const [gpuWarning, setGpuWarning] = useState(null); // { reason, detail } | null
 
   const validation = useMemo(() => validateParams(p, lang), [p, lang]);
 
@@ -95,12 +99,7 @@ export default function Setup() {
     }
   };
 
-  const run = async (mode) => {
-    if (!validation.ok) {
-      alert(validation.summary);
-      return;
-    }
-
+  const doRun = async (mode) => {
     try {
       if (!api) return alert(t("electronOnlyRun"));
       const paramText = buildParamTxt(normalizeParams(p));
@@ -120,6 +119,34 @@ export default function Setup() {
       console.error(e);
       alert(t("runError", { mode: mode.toUpperCase(), error: String(e) }));
     }
+  };
+
+  const run = async (mode) => {
+    if (!validation.ok) {
+      alert(validation.summary);
+      return;
+    }
+
+    // Before actually launching a GPU run, probe nvidia-smi so a broken/
+    // missing GPU driver surfaces as a clear choice ("run on CPU instead?")
+    // rather than a cryptic crash from mc_sim itself.
+    if (mode === "gpu" && typeof api?.checkGpu === "function") {
+      setCheckingGpu(true);
+      try {
+        const gpu = await api.checkGpu();
+        if (!gpu?.available) {
+          setGpuWarning(gpu || { reason: "not-found" });
+          return;
+        }
+      } catch {
+        // Detection failing shouldn't block the user — fall through and let
+        // the real run report whatever actually goes wrong.
+      } finally {
+        setCheckingGpu(false);
+      }
+    }
+
+    await doRun(mode);
   };
 
   return (
@@ -641,12 +668,45 @@ export default function Setup() {
               onMouseEnter={() => setHoverGPU(true)}
               onMouseLeave={() => setHoverGPU(false)}
               onClick={() => run("gpu")}
-              disabled={!validation.ok}
+              disabled={!validation.ok || checkingGpu}
             >
-              {t("runGPU")}
+              {checkingGpu ? t("gpuCheckingLabel") : t("runGPU")}
             </button>
           </div>
         </div>
+
+        <Modal open={!!gpuWarning} onClose={() => setGpuWarning(null)} width={440}>
+          <div style={s.modalHeader}>
+            <span style={s.modalIcon}>⚠</span>
+            <div style={s.modalTitle}>{t("gpuUnavailableTitle")}</div>
+          </div>
+
+          <div style={s.modalBody}>
+            {gpuWarning?.reason === "driver-error"
+              ? t("gpuUnavailableDriverError", { detail: gpuWarning.detail || "" })
+              : gpuWarning?.reason === "timeout"
+                ? t("gpuUnavailableTimeout")
+                : t("gpuUnavailableNotFound")}
+          </div>
+
+          <div style={s.modalQuestion}>{t("gpuUnavailableQuestion")}</div>
+
+          <div style={s.modalActions}>
+            <button style={s.btnGhost} className="ui-hover" onClick={() => setGpuWarning(null)}>
+              {t("cancel")}
+            </button>
+            <button
+              style={s.runCPU}
+              className="ui-hover"
+              onClick={() => {
+                setGpuWarning(null);
+                doRun("cpu");
+              }}
+            >
+              {t("runCpuInstead")}
+            </button>
+          </div>
+        </Modal>
               </div>
 
       <style>{`
@@ -966,45 +1026,6 @@ function normalizeParams(raw) {
   return p;
 }
 
-function defaultParams() {
-  return {
-    Nx: "20",
-    Ny: "20",
-    Nz: "10",
-    MCS: "1000",
-    MCT: "20000",
-    potential: "ghrl",
-    Ti: "1.3",
-    Tf: "0.5",
-    dT: "-0.05",
-    p0: "0",
-    fn: "2",
-    nk: "1",
-    k11: "1",
-    k22: "1.0",
-    k33: "1",
-    ic: "random",
-    ic_file: "",
-    phi_0: "",
-    theta_0: "",
-    p0_i: "",
-    evol: "thermal",
-    geometry: "bulk",
-    boundary_file: "",
-    xbound: "periodic",
-    ybound: "periodic",
-    zbound: "periodic",
-    first_file: "",
-    elecX: "",
-    elecY: "",
-    elecZ: "",
-    elecA: "",
-    elecEi: "",
-    elecEf: "",
-    elecdE: "",
-    anchoring: [],
-  };
-}
 function isIntegerString(value) {
   return /^[-+]?\d+$/.test(clean(value));
 }
@@ -1372,6 +1393,36 @@ const s = {
     fontWeight: 950,
     transition: "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1)",
     boxShadow: "0 14px 30px rgba(230,57,70,0.20)",
+  },
+
+  modalHeader: { display: "flex", alignItems: "center", gap: 10 },
+  modalIcon: {
+    width: 34,
+    height: 34,
+    minWidth: 34,
+    borderRadius: 12,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(230,57,70,0.12)",
+    color: "var(--red)",
+    fontSize: 16,
+    fontWeight: 950,
+  },
+  modalTitle: { fontWeight: 950, fontSize: 17, letterSpacing: "-0.01em" },
+  modalBody: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: "var(--muted)",
+    lineHeight: 1.55,
+    whiteSpace: "pre-wrap",
+  },
+  modalQuestion: { fontSize: 14, fontWeight: 900, color: "var(--text-main)" },
+  modalActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 4,
   },
 
   errorPanel: {

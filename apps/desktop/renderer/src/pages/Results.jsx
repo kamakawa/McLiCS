@@ -7,6 +7,7 @@ import Select from "../components/Select.jsx";
 import DirectorField3DViewer from "../components/DirectorField3DViewer.jsx";
 import BandChart from "../components/BandChart.jsx";
 import { buildDirectorFieldTimeline } from "../utils/directorField.js";
+import { parseParamTxt } from "../utils/paramTxt.js";
 
 const api = window.mclics;
 
@@ -382,67 +383,84 @@ export default function Results() {
     if (directorTimeline.length < 2) setPlaying(false);
   }, [directorTimeline.length]);
 
-  const exportPDF = async () => {
+  // Shared by exportPDF and exportExcel: reads param.txt + po.dat, parses
+  // the data table, and renders the S(T)/E(T) charts to PNG once — both
+  // export formats consume the exact same gathered data, just packaged
+  // differently (PDF wants display-formatted strings, Excel wants real
+  // numbers for its cells).
+  const gatherReportData = async () => {
+    if (!api) {
+      alert(t("exportWorksElectron"));
+      return null;
+    }
+    if (!workdir) {
+      alert(t("workdirNotFound"));
+      return null;
+    }
+
+    const logoDataUrl = await assetToDataUrl(logoPng);
+
+    let paramTextLocal = "";
     try {
-      if (!api) {
-        alert(t("exportWorksElectron"));
-        return;
-      }
-      if (!workdir) {
-        alert(t("workdirNotFound"));
-        return;
-      }
+      const rr = await api.readRunFile(workdir, "param.txt", 2_000_000);
+      paramTextLocal = rr?.text || "";
+    } catch {
+      paramTextLocal = "";
+    }
 
-      const logoDataUrl = await assetToDataUrl(logoPng);
+    const poFile = files.find((f) => f.toLowerCase().includes("po.dat"));
+    if (!poFile) {
+      alert(t("poDatNotFound"));
+      return null;
+    }
 
-      let paramTextLocal = "";
-      try {
-        const rr = await api.readRunFile(workdir, "param.txt", 2_000_000);
-        paramTextLocal = rr?.text || "";
-      } catch {
-        paramTextLocal = "";
-      }
+    const poResp = await api.readRunFile(workdir, poFile, 2_000_000);
+    const poTextLocal = poResp?.text || "";
+    const poParsed = parseTable(poTextLocal);
 
-      const poFile = files.find((f) => f.toLowerCase().includes("po.dat"));
-      if (!poFile) {
-        alert(t("poDatNotFound"));
-        return;
-      }
+    if (!poParsed || !poParsed.rows?.length) {
+      alert(t("poDatParseError"));
+      return null;
+    }
 
-      const poResp = await api.readRunFile(workdir, poFile, 2_000_000);
-      const poTextLocal = poResp?.text || "";
-      const poParsed = parseTable(poTextLocal);
+    const poHeaders =
+      poParsed.headers && poParsed.headers.length
+        ? poParsed.headers
+        : Array.from({ length: poParsed.cols }, (_, i) => `col${i}`);
 
-      if (!poParsed || !poParsed.rows?.length) {
-        alert(t("poDatParseError"));
-        return;
-      }
+    const fmtCell = (v) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "";
+      const a = Math.abs(n);
+      if (a >= 1000 || (a > 0 && a < 0.001)) return n.toExponential(6);
+      return n.toFixed(8).replace(/0+$/g, "").replace(/\.$/g, "");
+    };
 
-      const poHeaders =
-        poParsed.headers && poParsed.headers.length
-          ? poParsed.headers
-          : Array.from({ length: poParsed.cols }, (_, i) => `col${i}`);
+    const poTableExport = {
+      headers: poHeaders,
+      rows: poParsed.rows.map((r) => r.map(fmtCell)),
+    };
 
-      const fmtCell = (v) => {
-        const n = Number(v);
-        if (!Number.isFinite(n)) return "";
-        const a = Math.abs(n);
-        if (a >= 1000 || (a > 0 && a < 0.001)) return n.toExponential(6);
-        return n.toFixed(8).replace(/0+$/g, "").replace(/\.$/g, "");
-      };
+    // Same table, but as real numbers rather than display-formatted
+    // strings — Excel cells should be numeric (sortable, chartable, usable
+    // in formulas), not text that merely looks like a number.
+    const poTableRaw = {
+      headers: poHeaders,
+      rows: poParsed.rows.map((r) =>
+        r.map((v) => {
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        })
+      ),
+    };
 
-      const poTableExport = {
-        headers: poHeaders,
-        rows: poParsed.rows.map((r) => r.map(fmtCell)),
-      };
+    const poCols = pickPoColumns(poParsed);
+    if (!poCols) {
+      alert(t("poDatColumnsError"));
+      return null;
+    }
 
-      const poCols = pickPoColumns(poParsed);
-      if (!poCols) {
-        alert(t("poDatColumnsError"));
-        return;
-      }
-
-      const poRows = poParsed.rows
+    const poRows = poParsed.rows
         .map((r) => ({
           T: r[poCols.t],
           S: r[poCols.s],
@@ -589,12 +607,41 @@ export default function Results() {
 
       document.body.removeChild(host);
 
+    return { logoDataUrl, paramTextLocal, poPlots, poTableExport, poTableRaw };
+  };
+
+  const exportPDF = async () => {
+    try {
+      const data = await gatherReportData();
+      if (!data) return;
+
       const res = await api.exportReportPDF({
-        logoDataUrl,
-        paramText: paramTextLocal,
+        logoDataUrl: data.logoDataUrl,
+        paramText: data.paramTextLocal,
         notes: notes || "",
-        poPlots,
-        poTable: poTableExport,
+        poPlots: data.poPlots,
+        poTable: data.poTableExport,
+      });
+
+      if (res?.canceled) return;
+      alert(`${t("savedAt", { path: res.filePath })}`);
+    } catch (e) {
+      console.error(e);
+      alert(t("exportError", { error: String(e) }));
+    }
+  };
+
+  const exportExcel = async () => {
+    try {
+      const data = await gatherReportData();
+      if (!data) return;
+
+      const res = await api.exportReportExcel({
+        logoDataUrl: data.logoDataUrl,
+        paramText: data.paramTextLocal,
+        notes: notes || "",
+        poPlots: data.poPlots,
+        poTable: data.poTableRaw,
       });
 
       if (res?.canceled) return;
@@ -629,7 +676,14 @@ export default function Results() {
         </div>
 
         <div style={s.topActions}>
-          <button style={s.btn} className="ui-hover" onClick={() => nav("/setup")}>
+          <button
+            style={s.btn}
+            className="ui-hover"
+            onClick={() =>
+              nav("/setup", paramText ? { state: { params: parseParamTxt(paramText) } } : undefined)
+            }
+            title={paramText ? t("backToSetupWithParamsTitle") : undefined}
+          >
             {t("backToSetup")}
           </button>
           <button style={s.btn} className="ui-hover" onClick={() => nav("/")}>
@@ -941,6 +995,15 @@ export default function Results() {
                 title={t("clearNotesTitle")}
               >
                 {t("clear")}
+              </button>
+
+              <button
+                className="ui-hover"
+                style={s.btnGhost}
+                onClick={exportExcel}
+                title={t("generateExcelTitle")}
+              >
+                {t("generateExcel")}
               </button>
 
               <button

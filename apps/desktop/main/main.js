@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { spawn, spawnSync } = require("child_process");
+const ExcelJS = require("exceljs");
 
 let mainWindow = null;
 let running = null;
@@ -584,6 +585,45 @@ ipcMain.handle("get-sim-status", async (_event, { id }) => {
   return { found: false };
 });
 
+/* ================= GPU CHECK ================= */
+
+// Quick, cheap probe used before a GPU run so the user gets a clear reason
+// ("driver mismatch", "no NVIDIA tools found", ...) instead of a cryptic
+// crash from mc_sim itself. nvidia-smi is the standard tool shipped by the
+// NVIDIA driver on both Linux and Windows, so no platform branching needed.
+function checkGpuAvailable() {
+  let result;
+  try {
+    result = spawnSync("nvidia-smi", ["-L"], { encoding: "utf8", timeout: 6000 });
+  } catch (e) {
+    return { available: false, reason: "not-found", detail: String(e?.message || e) };
+  }
+
+  if (result.error) {
+    // ENOENT (nvidia-smi missing/not on PATH) or another spawn failure.
+    return { available: false, reason: "not-found", detail: result.error.message };
+  }
+
+  if (result.signal) {
+    return {
+      available: false,
+      reason: "timeout",
+      detail: `nvidia-smi did not respond (signal ${result.signal}).`,
+    };
+  }
+
+  if (result.status !== 0) {
+    const detail =
+      (result.stderr || result.stdout || "").trim() ||
+      `nvidia-smi exited with code ${result.status}.`;
+    return { available: false, reason: "driver-error", detail };
+  }
+
+  return { available: true };
+}
+
+ipcMain.handle("check-gpu", async () => checkGpuAvailable());
+
 /* ================= RUN ================= */
 
 ipcMain.handle("run-sim", async (_event, { mode, paramText }) => {
@@ -753,6 +793,175 @@ ipcMain.handle("cancel-sim", async () => {
 
 /* ================= REPORT (PDF) ================= */
 
+// ---- shared report helpers (used by both PDF and Excel export) ----
+
+function fmt(v, digits = 4) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  const a = Math.abs(n);
+  if (a >= 1000 || (a > 0 && a < 0.001)) return n.toExponential(3);
+  return n.toFixed(digits).replace(/0+$/g, "").replace(/\.$/g, "");
+}
+
+function toNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function parseParamRows(text) {
+  return String(text || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.startsWith("#"))
+    .map((line) => {
+      const parts = line.split(/\s+/).filter(Boolean);
+      return {
+        key: parts[0] || "",
+        value: parts.slice(1).join(" "),
+      };
+    })
+    .filter((r) => r.key);
+}
+
+function groupParamRows(rows) {
+  const groups = {
+    "System Size": [],
+    "Monte Carlo": [],
+    "Temperature Schedule": [],
+    "Potential & Physics": [],
+    "Initialization & Evolution": [],
+    "Geometry & Boundaries": [],
+    "Anchoring": [],
+    "Other": [],
+  };
+
+  const mapGroup = (key) => {
+    if (["Nx", "Ny", "Nz"].includes(key)) return "System Size";
+    if (["MCS", "MCT", "fn", "nk", "first_file_number"].includes(key)) return "Monte Carlo";
+    if (["Ti", "Tf", "dT"].includes(key)) return "Temperature Schedule";
+    if (["potential", "p0", "p0_i", "k11", "k22", "k33"].includes(key)) return "Potential & Physics";
+    if (["ic", "ic_file", "phi_0", "theta_0", "evol"].includes(key)) return "Initialization & Evolution";
+    if (["geometry", "boundary_file", "xbound", "ybound", "zbound"].includes(key))
+      return "Geometry & Boundaries";
+    if (["anchoring_type", "W", "phi_s", "theta_s"].includes(key)) return "Anchoring";
+    return "Other";
+  };
+
+  for (const row of rows) {
+    groups[mapGroup(row.key)].push(row);
+  }
+
+  return Object.entries(groups).filter(([, items]) => items.length);
+}
+
+function buildSummaryFromPo(poTable) {
+  if (!poTable || !Array.isArray(poTable.rows) || !poTable.rows.length) return null;
+
+  const headers =
+    Array.isArray(poTable.headers) && poTable.headers.length
+      ? poTable.headers
+      : poTable.rows[0].map((_, i) => `col${i}`);
+
+  const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const hs = headers.map(norm);
+
+  const idx = (candidates, fallback) => {
+    for (const c of candidates) {
+      const i = hs.indexOf(c);
+      if (i >= 0) return i;
+    }
+    return fallback;
+  };
+
+  const tIdx = idx(["t"], 0);
+  const sIdx = idx(["s"], 1);
+  const varSIdx = idx(["vars", "varse"], 2);
+  const eIdx = idx(["e"], 3);
+  const varEIdx = idx(["vare"], 4);
+
+  const rows = poTable.rows
+    .map((r) => ({
+      T: toNum(r[tIdx]),
+      S: toNum(r[sIdx]),
+      varS: toNum(r[varSIdx]),
+      E: toNum(r[eIdx]),
+      varE: toNum(r[varEIdx]),
+    }))
+    .filter((r) => Number.isFinite(r.T) && Number.isFinite(r.S) && Number.isFinite(r.E))
+    .sort((a, b) => a.T - b.T);
+
+  if (!rows.length) return null;
+
+  const avg = (arr) => arr.reduce((acc, v) => acc + v, 0) / arr.length;
+
+  const Ts = rows.map((r) => r.T);
+  const Ss = rows.map((r) => r.S);
+  const Es = rows.map((r) => r.E);
+
+  const sMean = avg(Ss);
+  const eMean = avg(Es);
+
+  let maxSRow = rows[0];
+  let minSRow = rows[0];
+  let minERow = rows[0];
+  let maxERow = rows[0];
+
+  for (const r of rows) {
+    if (r.S > maxSRow.S) maxSRow = r;
+    if (r.S < minSRow.S) minSRow = r;
+    if (r.E < minERow.E) minERow = r;
+    if (r.E > maxERow.E) maxERow = r;
+  }
+
+  let strongestDeltaS = null;
+  for (let i = 1; i < rows.length; i++) {
+    const prev = rows[i - 1];
+    const curr = rows[i];
+    const dS = Math.abs(curr.S - prev.S);
+    if (!strongestDeltaS || dS > strongestDeltaS.delta) {
+      strongestDeltaS = {
+        delta: dS,
+        fromT: prev.T,
+        toT: curr.T,
+      };
+    }
+  }
+
+  const trendS =
+    rows[rows.length - 1].S > rows[0].S
+      ? "The order parameter increases as temperature changes across the scanned range."
+      : "The order parameter decreases as temperature changes across the scanned range.";
+
+  const trendE =
+    rows[rows.length - 1].E < rows[0].E
+      ? "The mean energy becomes more negative across the scanned range."
+      : "The mean energy increases across the scanned range.";
+
+  let transitionText = "";
+  if (strongestDeltaS) {
+    transitionText = `The strongest variation in S occurs between T = ${fmt(
+      strongestDeltaS.fromT
+    )} and T = ${fmt(strongestDeltaS.toT)}, suggesting a relevant structural change in this interval.`;
+  }
+
+  return {
+    sampleCount: rows.length,
+    tMin: Math.min(...Ts),
+    tMax: Math.max(...Ts),
+    sMean,
+    eMean,
+    maxSRow,
+    minSRow,
+    minERow,
+    maxERow,
+    strongestDeltaS,
+    interpretation: [trendS, trendE, transitionText].filter(Boolean),
+  };
+}
+
 ipcMain.handle("export-report-pdf", async (_event, payload) => {
   try {
     const {
@@ -776,173 +985,6 @@ ipcMain.handle("export-report-pdf", async (_event, payload) => {
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;");
-
-    const fmt = (v, digits = 4) => {
-      const n = Number(v);
-      if (!Number.isFinite(n)) return "—";
-      const a = Math.abs(n);
-      if (a >= 1000 || (a > 0 && a < 0.001)) return n.toExponential(3);
-      return n.toFixed(digits).replace(/0+$/g, "").replace(/\.$/g, "");
-    };
-
-    const toNum = (v) => {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : NaN;
-    };
-
-    const parseParamRows = (text) => {
-      return String(text || "")
-        .replace(/\r/g, "")
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .filter((line) => !line.startsWith("#"))
-        .map((line) => {
-          const parts = line.split(/\s+/).filter(Boolean);
-          return {
-            key: parts[0] || "",
-            value: parts.slice(1).join(" "),
-          };
-        })
-        .filter((r) => r.key);
-    };
-
-    const groupParamRows = (rows) => {
-      const groups = {
-        "System Size": [],
-        "Monte Carlo": [],
-        "Temperature Schedule": [],
-        "Potential & Physics": [],
-        "Initialization & Evolution": [],
-        "Geometry & Boundaries": [],
-        "Anchoring": [],
-        "Other": [],
-      };
-
-      const mapGroup = (key) => {
-        if (["Nx", "Ny", "Nz"].includes(key)) return "System Size";
-        if (["MCS", "MCT", "fn", "nk", "first_file_number"].includes(key)) return "Monte Carlo";
-        if (["Ti", "Tf", "dT"].includes(key)) return "Temperature Schedule";
-        if (["potential", "p0", "p0_i", "k11", "k22", "k33"].includes(key)) return "Potential & Physics";
-        if (["ic", "ic_file", "phi_0", "theta_0", "evol"].includes(key)) return "Initialization & Evolution";
-        if (["geometry", "boundary_file", "xbound", "ybound", "zbound"].includes(key))
-          return "Geometry & Boundaries";
-        if (["anchoring_type", "W", "phi_s", "theta_s"].includes(key)) return "Anchoring";
-        return "Other";
-      };
-
-      for (const row of rows) {
-        groups[mapGroup(row.key)].push(row);
-      }
-
-      return Object.entries(groups).filter(([, items]) => items.length);
-    };
-
-    const buildSummaryFromPo = (poTable) => {
-      if (!poTable || !Array.isArray(poTable.rows) || !poTable.rows.length) return null;
-
-      const headers =
-        Array.isArray(poTable.headers) && poTable.headers.length
-          ? poTable.headers
-          : poTable.rows[0].map((_, i) => `col${i}`);
-
-      const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-
-      const hs = headers.map(norm);
-
-      const idx = (candidates, fallback) => {
-        for (const c of candidates) {
-          const i = hs.indexOf(c);
-          if (i >= 0) return i;
-        }
-        return fallback;
-      };
-
-      const tIdx = idx(["t"], 0);
-      const sIdx = idx(["s"], 1);
-      const varSIdx = idx(["vars", "varse"], 2);
-      const eIdx = idx(["e"], 3);
-      const varEIdx = idx(["vare"], 4);
-
-      const rows = poTable.rows
-        .map((r) => ({
-          T: toNum(r[tIdx]),
-          S: toNum(r[sIdx]),
-          varS: toNum(r[varSIdx]),
-          E: toNum(r[eIdx]),
-          varE: toNum(r[varEIdx]),
-        }))
-        .filter((r) => Number.isFinite(r.T) && Number.isFinite(r.S) && Number.isFinite(r.E))
-        .sort((a, b) => a.T - b.T);
-
-      if (!rows.length) return null;
-
-      const avg = (arr) => arr.reduce((acc, v) => acc + v, 0) / arr.length;
-
-      const Ts = rows.map((r) => r.T);
-      const Ss = rows.map((r) => r.S);
-      const Es = rows.map((r) => r.E);
-
-      const sMean = avg(Ss);
-      const eMean = avg(Es);
-
-      let maxSRow = rows[0];
-      let minSRow = rows[0];
-      let minERow = rows[0];
-      let maxERow = rows[0];
-
-      for (const r of rows) {
-        if (r.S > maxSRow.S) maxSRow = r;
-        if (r.S < minSRow.S) minSRow = r;
-        if (r.E < minERow.E) minERow = r;
-        if (r.E > maxERow.E) maxERow = r;
-      }
-
-      let strongestDeltaS = null;
-      for (let i = 1; i < rows.length; i++) {
-        const prev = rows[i - 1];
-        const curr = rows[i];
-        const dS = Math.abs(curr.S - prev.S);
-        if (!strongestDeltaS || dS > strongestDeltaS.delta) {
-          strongestDeltaS = {
-            delta: dS,
-            fromT: prev.T,
-            toT: curr.T,
-          };
-        }
-      }
-
-      const trendS =
-        rows[rows.length - 1].S > rows[0].S
-          ? "The order parameter increases as temperature changes across the scanned range."
-          : "The order parameter decreases as temperature changes across the scanned range.";
-
-      const trendE =
-        rows[rows.length - 1].E < rows[0].E
-          ? "The mean energy becomes more negative across the scanned range."
-          : "The mean energy increases across the scanned range.";
-
-      let transitionText = "";
-      if (strongestDeltaS) {
-        transitionText = `The strongest variation in S occurs between T = ${fmt(
-          strongestDeltaS.fromT
-        )} and T = ${fmt(strongestDeltaS.toT)}, suggesting a relevant structural change in this interval.`;
-      }
-
-      return {
-        sampleCount: rows.length,
-        tMin: Math.min(...Ts),
-        tMax: Math.max(...Ts),
-        sMean,
-        eMean,
-        maxSRow,
-        minSRow,
-        minERow,
-        maxERow,
-        strongestDeltaS,
-        interpretation: [trendS, trendE, transitionText].filter(Boolean),
-      };
-    };
 
     const notesTrimmed = String(notes || "").trim();
     const showNotes = notesTrimmed.length > 0;
@@ -1508,6 +1550,199 @@ ipcMain.handle("export-report-pdf", async (_event, payload) => {
 
     fs.writeFileSync(filePath, pdf);
     win.destroy();
+
+    return { canceled: false, filePath };
+  } catch (e) {
+    console.error(e);
+    throw e;
+  }
+});
+
+function excelColumnLetter(n) {
+  let s = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    s = String.fromCharCode(65 + rem) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+ipcMain.handle("export-report-excel", async (_event, payload) => {
+  try {
+    const {
+      logoDataUrl = "",
+      paramText = "",
+      notes = "",
+      poPlots = [],
+      poTable = null,
+    } = payload || {};
+
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: "Save Excel report",
+      defaultPath: path.join(app.getPath("documents"), "mclics-report.xlsx"),
+      filters: [{ name: "Excel Workbook", extensions: ["xlsx"] }],
+    });
+
+    if (canceled || !filePath) return { canceled: true };
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "McLiCS";
+    workbook.created = new Date();
+
+    // Embeds a base64 data: URL image at the given row, returns its height
+    // in px so the caller can advance past it. ExcelJS wants a Buffer, not
+    // the data URL string, so we decode it ourselves first.
+    const addEmbeddedImage = (sheet, dataUrl, anchorRow, opts = {}) => {
+      const match = /^data:image\/(png|jpe?g);base64,(.+)$/i.exec(String(dataUrl || ""));
+      if (!match) return 0;
+
+      const extension = match[1].toLowerCase() === "jpg" ? "jpeg" : match[1].toLowerCase();
+      const buffer = Buffer.from(match[2], "base64");
+      const imageId = workbook.addImage({ buffer, extension });
+      const width = opts.width || 480;
+      const height = opts.height || 220;
+
+      sheet.addImage(imageId, {
+        tl: { col: opts.col ?? 0, row: anchorRow },
+        ext: { width, height },
+      });
+
+      return height;
+    };
+
+    // Default row height is ~15pt (~20px) — used to convert an image's pixel
+    // height into "how many rows should I skip" so the next block doesn't
+    // overlap it.
+    const rowsForHeight = (px) => Math.ceil(px / 20) + 1;
+
+    /* ---------- Sheet 1: Resumo ---------- */
+    const summarySheet = workbook.addWorksheet("Resumo");
+    summarySheet.getColumn(1).width = 28;
+    summarySheet.getColumn(2).width = 42;
+
+    let row = 0;
+    if (logoDataUrl) {
+      const h = addEmbeddedImage(summarySheet, logoDataUrl, row, { width: 190, height: 71 });
+      row += rowsForHeight(h);
+    }
+
+    row += 1;
+    summarySheet.getCell(row, 1).value = "McLiCS — Simulation Report";
+    summarySheet.getCell(row, 1).font = { bold: true, size: 16 };
+
+    row += 1;
+    summarySheet.getCell(row, 1).value = "Generated";
+    summarySheet.getCell(row, 1).font = { bold: true };
+    summarySheet.getCell(row, 2).value = new Date();
+    summarySheet.getCell(row, 2).numFmt = "yyyy-mm-dd hh:mm";
+
+    const summary = buildSummaryFromPo(poTable);
+    if (summary) {
+      row += 2;
+      summarySheet.getCell(row, 1).value = "Executive Summary";
+      summarySheet.getCell(row, 1).font = { bold: true, size: 13 };
+
+      const kv = [
+        ["Temperature range", `${fmt(summary.tMin)} → ${fmt(summary.tMax)}`],
+        ["Samples", summary.sampleCount],
+        ["Mean order parameter ⟨S⟩", Number(summary.sMean.toFixed(5))],
+        ["Mean energy ⟨E⟩", Number(summary.eMean.toFixed(5))],
+        ["Maximum S", Number(summary.maxSRow.S.toFixed(5))],
+        ["Minimum E", Number(summary.minERow.E.toFixed(5))],
+        ["Minimum S", Number(summary.minSRow.S.toFixed(5))],
+        ["Maximum E", Number(summary.maxERow.E.toFixed(5))],
+      ];
+      for (const [k, v] of kv) {
+        row += 1;
+        summarySheet.getCell(row, 1).value = k;
+        summarySheet.getCell(row, 1).font = { bold: true };
+        summarySheet.getCell(row, 2).value = v;
+      }
+
+      if (summary.interpretation?.length) {
+        row += 2;
+        summarySheet.getCell(row, 1).value = "Automatic interpretation";
+        summarySheet.getCell(row, 1).font = { bold: true, size: 13 };
+
+        for (const line of summary.interpretation) {
+          row += 1;
+          summarySheet.getCell(row, 1).value = line;
+          summarySheet.mergeCells(row, 1, row, 2);
+          summarySheet.getCell(row, 1).alignment = { wrapText: true };
+        }
+      }
+    }
+
+    const notesTrimmed = String(notes || "").trim();
+    if (notesTrimmed) {
+      row += 2;
+      summarySheet.getCell(row, 1).value = "Research Notes";
+      summarySheet.getCell(row, 1).font = { bold: true, size: 13 };
+
+      row += 1;
+      summarySheet.getCell(row, 1).value = notesTrimmed;
+      summarySheet.getCell(row, 1).alignment = { wrapText: true, vertical: "top" };
+      summarySheet.mergeCells(row, 1, row, 2);
+      summarySheet.getRow(row).height = Math.min(400, Math.max(20, notesTrimmed.split("\n").length * 15));
+    }
+
+    /* ---------- Sheet 2: Parâmetros ---------- */
+    const paramRows = parseParamRows(paramText);
+    const groupedParams = groupParamRows(paramRows);
+    if (groupedParams.length) {
+      const paramSheet = workbook.addWorksheet("Parâmetros");
+      paramSheet.columns = [
+        { header: "Group", key: "group", width: 26 },
+        { header: "Parameter", key: "key", width: 22 },
+        { header: "Value", key: "value", width: 30 },
+      ];
+      paramSheet.getRow(1).font = { bold: true };
+
+      for (const [groupName, items] of groupedParams) {
+        for (const item of items) {
+          paramSheet.addRow({ group: groupName, key: item.key, value: item.value });
+        }
+      }
+
+      paramSheet.autoFilter = { from: "A1", to: "C1" };
+    }
+
+    /* ---------- Sheet 3: po.dat ---------- */
+    if (poTable?.rows?.length) {
+      const headers =
+        Array.isArray(poTable.headers) && poTable.headers.length
+          ? poTable.headers
+          : poTable.rows[0].map((_, i) => `col${i}`);
+
+      const dataSheet = workbook.addWorksheet("po.dat");
+      dataSheet.columns = headers.map((h) => ({ header: h, key: h, width: 14 }));
+      dataSheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      dataSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE63946" } };
+      dataSheet.addRows(poTable.rows);
+      dataSheet.views = [{ state: "frozen", ySplit: 1 }];
+
+      const lastCol = excelColumnLetter(headers.length);
+      dataSheet.autoFilter = { from: "A1", to: `${lastCol}1` };
+    }
+
+    /* ---------- Sheet 4: Gráficos ---------- */
+    const plotsWithImage = (poPlots || []).filter((p) => p?.dataUrl);
+    if (plotsWithImage.length) {
+      const chartSheet = workbook.addWorksheet("Gráficos");
+      let chartRow = 0;
+
+      for (const plot of plotsWithImage) {
+        chartSheet.getCell(chartRow + 1, 1).value = plot.title || "Plot";
+        chartSheet.getCell(chartRow + 1, 1).font = { bold: true, size: 13 };
+        chartRow += 1;
+
+        const h = addEmbeddedImage(chartSheet, plot.dataUrl, chartRow, { width: 640, height: 196 });
+        chartRow += rowsForHeight(h) + 1;
+      }
+    }
+
+    await workbook.xlsx.writeFile(filePath);
 
     return { canceled: false, filePath };
   } catch (e) {

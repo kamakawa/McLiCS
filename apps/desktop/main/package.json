@@ -9,39 +9,30 @@
   },
   "homepage": "https://github.com/erickamakawa/MClist",
   "description": "McLiCS",
-
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-
     "build:renderer": "npm --prefix ../renderer run build",
-
     "prepare:packaged-assets": "node ./scripts/prepare-packaged-assets.js",
-
     "dist:linux": "npm run build:renderer && npm run prepare:packaged-assets && electron-builder --linux AppImage deb",
     "dist:win": "npm run build:renderer && npm run prepare:packaged-assets && electron-builder --win nsis portable",
     "dist:dir": "npm run build:renderer && npm run prepare:packaged-assets && electron-builder --dir",
-
     "pack": "npm run dist:linux"
   },
-
   "dependencies": {
+    "exceljs": "^4.4.0",
     "pdfkit": "^0.17.2"
   },
-
   "devDependencies": {
     "electron": "^30.0.0",
     "electron-builder": "^24.13.3"
   },
-
   "build": {
     "appId": "com.mclics.desktop",
     "productName": "McLiCS",
-
     "directories": {
       "output": "dist"
     },
-
     "files": [
       "main.js",
       "preload.js",
@@ -49,46 +40,52 @@
       "build/icon.png",
       "node_modules/**/*"
     ],
-
     "extraResources": [
       {
         "from": "resources/renderer-dist",
         "to": "renderer-dist",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "resources/backend",
         "to": "backend",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "resources/scripts",
         "to": "scripts",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
-
     "asar": true,
-
     "asarUnpack": [
       "backend/**/*",
       "scripts/**/*"
     ],
-
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Science",
       "icon": "build",
       "maintainer": "Eric Kamakawa <erickamakawa@gmail.com>",
       "artifactName": "McLiCS-${version}-${arch}.${ext}"
     },
-
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "build/icon.png",
       "artifactName": "McLiCS-${version}-${arch}.${ext}"
     },
-
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,

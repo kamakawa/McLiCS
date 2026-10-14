@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("mclics", {
     ipcRenderer.invoke("export-param-file", { paramText }),
 
   // run / cancel / status
+  checkGpu: () => ipcRenderer.invoke("check-gpu"),
   runSim: (payload) => ipcRenderer.invoke("run-sim", payload),
   cancelSim: () => ipcRenderer.invoke("cancel-sim"),
   getSimStatus: (id) => ipcRenderer.invoke("get-sim-status", { id }),
@@ -29,6 +30,8 @@ contextBridge.exposeInMainWorld("mclics", {
   // report
   exportReportPDF: (payload) =>
     ipcRenderer.invoke("export-report-pdf", payload),
+  exportReportExcel: (payload) =>
+    ipcRenderer.invoke("export-report-excel", payload),
 
   // events
   onSimLog: (cb) => {

@@ -74,4 +74,36 @@ textarea:focus {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* Themed scrollbars — Electron is always Chromium, so the ::-webkit-*
+   pseudo-elements are all that's needed (no cross-browser fallback). Thin,
+   rounded thumb using the same tokens as the rest of the UI, so it already
+   adapts to light/dark automatically. */
+*{
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+*::-webkit-scrollbar{
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track{
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb{
+  background-color: var(--line);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover{
+  background-color: var(--muted);
+}
+
+*::-webkit-scrollbar-corner{
+  background: transparent;
+}
 
